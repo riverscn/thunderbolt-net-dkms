@@ -1,0 +1,83 @@
+name: Build and test
+
+"on":
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        with:
+          persist-credentials: false
+      - name: Verify sources and release allowlist
+        run: make check
+      - name: Ensure every tracked file is reviewed for release
+        run: diff -u release-files.txt <(git ls-files | LC_ALL=C sort)
+
+  linux:
+    needs: source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ['ubuntu:24.04', 'debian:13', 'ubuntu:26.04']
+    container:
+      image: ${{ matrix.image }}
+      options: --cpus=2 --memory=3g --pids-limit=512
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        with:
+          persist-credentials: false
+      - name: Build deb, run kernel tests, verify DKMS lifecycle
+        run: bash scripts/ci-linux.sh
+      - name: Export source-only release artifacts
+        if: matrix.image == 'ubuntu:24.04'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-${{ github.sha }}
+          path: |
+            dist/*.deb
+            dist/*.tar.gz
+            dist/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [source, linux]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-${{ github.sha }}
+          path: dist
+      - name: Publish experimental prerelease after all checks pass
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          test "$TAG" = "v$(cat VERSION)"
+          (cd dist && sha256sum --check SHA256SUMS)
+          gh release create "$TAG" dist/*.deb dist/*.tar.gz dist/SHA256SUMS \
+            --verify-tag --prerelease --title "$TAG" --notes-file CHANGELOG.md

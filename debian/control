@@ -1,0 +1,20 @@
+Source: thunderbolt-net
+Section: kernel
+Priority: optional
+Maintainer: Shun Li <riverscn@gmail.com>
+Build-Depends: debhelper-compat (= 13), dh-sequence-dkms, python3
+Standards-Version: 4.7.2
+Rules-Requires-Root: no
+
+Package: thunderbolt-net-dkms
+Architecture: all
+Depends: ${misc:Depends}, dkms (>= 3.0.10)
+Description: experimental Thunderbolt networking RX normalization (DKMS)
+ Out-of-tree thunderbolt_net replacement with opt-in validation and
+ segmentation metadata for oversized TCP packets received from a peer.
+ It preserves aggregates for local delivery and allows Linux to segment
+ supported packets when forwarding requires it.
+ .
+ This package contains source, built by DKMS for the target kernel.
+ The workaround is disabled by default. Installation does not request
+ unloading or reloading an active network module.

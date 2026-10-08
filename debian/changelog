@@ -1,0 +1,7 @@
+thunderbolt-net (0.1.0-1) unstable; urgency=medium
+
+  * Initial experimental DKMS source package.
+  * Preserve validated oversized TCP aggregates with conservative GSO metadata.
+  * Include reproducible source exports and hardware-free forwarding tests.
+
+ -- Shun Li <riverscn@gmail.com>  Thu, 08 Oct 2026 12:00:00 +0000

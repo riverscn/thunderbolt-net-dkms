@@ -1,0 +1,24 @@
+#!/usr/bin/make -f
+# SPDX-License-Identifier: GPL-2.0-only
+VERSION := $(shell cat VERSION)
+DEST := debian/thunderbolt-net-dkms/usr/src/thunderbolt-net-$(VERSION)
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	# Source-only DKMS package: build for the target kernel at installation.
+
+override_dh_auto_test:
+	$(MAKE) check
+
+override_dh_auto_clean:
+	# Do not depend on headers for the packaging host's running kernel.
+
+override_dh_auto_install:
+	install -d $(DEST)/src
+	install -m 644 VERSION Makefile $(DEST)/
+	install -m 644 src/Makefile src/main.c src/trace.c src/trace.h src/rx_fixup.c src/rx_fixup.h $(DEST)/src/
+
+override_dh_dkms:
+	dh_dkms -- dkms.conf

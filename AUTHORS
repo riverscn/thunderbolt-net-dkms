@@ -1,0 +1,8 @@
+Project maintainer: Shun Li <riverscn@gmail.com>
+
+Original Linux Thunderbolt networking driver authors include Amir Levy,
+Michael Jamet and Mika Westerberg. Copyright notices and public upstream
+author addresses are retained in the source files.
+
+The RX fragment-count prerequisite is based on upstream work by Maoyi Xie.
+See NOTICE.md for provenance and scope.

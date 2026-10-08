@@ -1,0 +1,29 @@
+name: Bug report
+description: Report a reproducible driver or packaging problem
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Review every attachment before posting. Remove hostnames, addresses,
+        MACs, UUIDs, usernames, private paths, credentials and application data.
+        Do not post packet payloads or full system logs. See docs/privacy.md.
+        Report security vulnerabilities privately using SECURITY.md.
+  - type: textarea
+    id: environment
+    attributes:
+      label: Versions and topology
+      description: Kernel, distribution, DKMS, package version, MTUs and a diagram using generic labels.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction and expected behavior
+      description: Include whether rx_segment is enabled and whether the stock module differs.
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Reviewed, minimal diagnostics
+      description: Include relevant counters and errors only. Redact identifying data.

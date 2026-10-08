@@ -1,0 +1,15 @@
+{
+  "baseline": "Linux v7.0",
+  "license": "GPL-2.0-only",
+  "urls": {
+    "main.c": "https://raw.githubusercontent.com/torvalds/linux/v7.0/drivers/net/thunderbolt/main.c",
+    "trace.c": "https://raw.githubusercontent.com/torvalds/linux/v7.0/drivers/net/thunderbolt/trace.c",
+    "trace.h": "https://raw.githubusercontent.com/torvalds/linux/v7.0/drivers/net/thunderbolt/trace.h"
+  },
+  "files": {
+    "main.c": "f78a351d8c3824c6f83bb45b4e60560175a504daa529759ce63556fd992f4f99",
+    "trace.c": "892e55352fa73aa7e0e3822bd2444b0ec2ea0dc056bf08d112bda66b62d0a80f",
+    "trace.h": "00556617e72cda84265feaca33aab5a3e4bdc3891d2ed53b0e2fe194b340fb5a"
+  },
+  "additional_upstream_fix": "55d9895f8997"
+}
