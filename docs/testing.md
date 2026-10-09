@@ -5,7 +5,7 @@
 ```sh
 make check
 dpkg-buildpackage --build=binary --no-sign
-python3 scripts/audit-deb.py ../thunderbolt-net-dkms_0.1.0-1_all.deb
+python3 scripts/audit-deb.py ../thunderbolt-net-dkms_0.1.1-1_all.deb
 ```
 
 Source checks verify the release allowlist, source provenance hashes, version
@@ -110,7 +110,7 @@ delivery worked. The patched path completed it. Raw packets, host identifiers,
 local paths, addresses and private diagnostic logs are intentionally not shipped.
 The anonymous summary is limited evidence, not independently reproducible raw data.
 
-### GRO header-length correction (unreleased)
+### GRO header-length correction (0.1.1)
 
 A separate short A/B/A test compared version 0.1.0, the header-length correction,
 and restored version 0.1.0 on one x86-64 Linux 7.0 host. All three phases kept

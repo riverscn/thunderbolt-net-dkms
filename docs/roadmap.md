@@ -7,6 +7,9 @@ driver baseline, source-only DKMS packaging, Debian package and current tests.
 The next milestone described here is not implemented in this version. In
 particular, the current DKMS configuration does not permit Linux 7.2 builds.
 
+Version 0.1.1 adds the GRO header-length correction and ordering regression tests
+while retaining that driver baseline and compatibility scope.
+
 As checked on 2026-10-08, the latest upstream stable kernel is 7.2.9 and the
 Arch Linux `linux` package is `7.2.9.arch1-1`. These are dated observations, not
 permanent version requirements. Sources: [kernel.org](https://www.kernel.org/)

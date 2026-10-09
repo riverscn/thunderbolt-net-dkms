@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.1 — experimental
 
 - Keep the Ethernet header length at `ETH_HLEN` and reserve Thunderbolt
   transport-header space through `needed_headroom`. This prevents GRO from
@@ -9,6 +9,10 @@
 - Add 256 multi-packet GRO ordering cases and a legacy-header negative control
   to the existing isolated QEMU tests used by CI.
 - Document the independent scope of this fix and limited hardware A/B/A results.
+
+The GRO correction is active with either `rx_segment` setting. Oversized TCP RX
+normalization remains opt-in. This release does not claim to eliminate all TCP
+retransmissions, and long-duration stability and hotplug validation remain open.
 
 ## 0.1.0 — experimental
 

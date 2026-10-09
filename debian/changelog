@@ -1,3 +1,12 @@
+thunderbolt-net (0.1.1-1) unstable; urgency=medium
+
+  * Preserve the Ethernet header length for correct GRO flow matching.
+  * Reserve Thunderbolt transport-header space as needed headroom.
+  * Add multi-packet GRO ordering tests and a legacy-layout negative control.
+  * Document anonymized hardware results and remaining validation limits.
+
+ -- Shun Li <riverscn@gmail.com>  Fri, 09 Oct 2026 01:17:16 +0000
+
 thunderbolt-net (0.1.0-1) unstable; urgency=medium
 
   * Initial experimental DKMS source package.

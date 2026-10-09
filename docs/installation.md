@@ -19,7 +19,7 @@ explicitly marked as a hardware test.
 Check `SHA256SUMS` against the release files, then:
 
 ```sh
-sudo apt install ./thunderbolt-net-dkms_0.1.0-1_all.deb
+sudo apt install ./thunderbolt-net-dkms_0.1.1-1_all.deb
 dkms status -m thunderbolt-net
 modinfo -n thunderbolt_net
 modinfo -F version thunderbolt_net
@@ -36,7 +36,10 @@ network configuration, firewall rule, or power-management policy. The package
 does not itself request module reloads. System-wide DKMS hooks and policies are
 administrator-controlled and may perform additional actions.
 
-## Explicitly enable
+## Explicitly enable RX normalization
+
+The GRO header-length correction in 0.1.1 is active whenever this module is
+loaded. The following opt-in only controls oversized TCP RX normalization.
 
 Copy the example from the source tree or installed documentation:
 
@@ -56,7 +59,7 @@ cat /sys/module/thunderbolt_net/parameters/rx_segment
 ethtool -S thunderbolt0
 ```
 
-Expected: module version `0.1.0`, `rx_segment` is `Y`, and normalization counters
+Expected: module version `0.1.1`, `rx_segment` is `Y`, and normalization counters
 increase under suitable traffic. Interface names can differ. An unload failure
 must be investigated; never force-remove a busy module. Reloading interrupts
 Thunderbolt networking, and peer negotiation may take time. Keep the console
@@ -81,7 +84,9 @@ See the [DKMS signing documentation](https://github.com/dkms-project/dkms#module
 ## Disable the workaround or remove the package
 
 To retain this module but disable normalization, remove the opt-in configuration
-or set `rx_segment=0`, then reload from an independent connection.
+or set `rx_segment=0`, then reload from an independent connection. The GRO
+header-length correction remains active; removing the package restores the
+distribution driver's behavior after the next module load.
 
 To restore the distribution module:
 
@@ -102,10 +107,10 @@ collision or failed restoration, stop and inspect its state before reloading.
 
 ```sh
 sudo dkms add .
-sudo dkms install -m thunderbolt-net -v 0.1.0 -k "$(uname -r)"
+sudo dkms install -m thunderbolt-net -v 0.1.1 -k "$(uname -r)"
 ```
 
 For this installation method, remove with
-`sudo dkms remove -m thunderbolt-net -v 0.1.0 --all`, then follow the same
+`sudo dkms remove -m thunderbolt-net -v 0.1.1 --all`, then follow the same
 configuration/initramfs/reload steps. Do not mix manual and Debian-managed
 installations of the same version.

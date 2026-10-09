@@ -12,23 +12,25 @@ TCP 包，先验证数据与校验和，再补充保守的 GSO 分段信息；�
 ## 当前状态
 
 - 驱动基于 Linux v7.0，保留原始作者与许可证声明。
+- 0.1.1 修正 GRO 的以太网头长度识别，改善同一 TCP 流的收包顺序；
+  这项修正不依赖 `rx_segment` 参数，加载本版本后始终生效。
 - 实机测试为 Linux 7.0、macOS 开启 TSO、MTU 1500。
 - 三组交替短测中，本机 IPv4 吞吐与原驱动相差约 2% 以内。
 - 验证了实际 IPv4 Docker 转发及隔离内核的 IPv4/IPv6 网桥、路由路径。
 - 纯二层桥接的实机验收和长期稳定性验证仍有待完成。
-- 修复默认关闭，使用 `rx_segment=1` 显式启用。
+- 超大 TCP 包的 RX 规范化仍默认关闭，使用 `rx_segment=1` 显式启用。
 - 首版面向 x86-64；内核范围和测试层次见 [兼容性](docs/compatibility.md)。
 
 当前版本作为开发基线保存。下一阶段计划更新到明确固定的上游最新稳定版驱动，
 集中维护旧内核兼容层，并增加 Linux 7.2 验证与 Arch 打包。
-这些工作**尚未在 0.1.0 中实现**，具体范围见 [开发路线](docs/roadmap.md)。
+这些工作**尚未在 0.1.1 中实现**，具体范围见 [开发路线](docs/roadmap.md)。
 
 ## 安装
 
 先安装与目标内核完全匹配的头文件，再安装：
 
 ```sh
-sudo apt install ./thunderbolt-net-dkms_0.1.0-1_all.deb
+sudo apt install ./thunderbolt-net-dkms_0.1.1-1_all.deb
 dkms status -m thunderbolt-net
 modinfo -n thunderbolt_net
 ```

@@ -14,26 +14,28 @@ runtime power management, DHCP, or every TSO interoperability problem.
 ## Status
 
 - Derived from the Linux v7.0 driver; original notices are retained.
+- Version 0.1.1 corrects Ethernet-header accounting for GRO flow matching and
+  packet ordering. This correction is active with either `rx_segment` setting.
 - Hardware validation: Linux 7.0, macOS peer with TSO enabled, MTU 1500.
 - Native IPv4 throughput was within about 2% of the stock driver in three
   alternating short trials. See [measurements and limits](docs/testing.md).
 - Real IPv4 Docker forwarding and synthetic IPv4/IPv6 bridge/router paths were
   tested. Physical two-port bridge forwarding and long-duration stability have
   not been fully validated.
-- Workaround disabled by default: `rx_segment=0`.
+- Oversized TCP RX normalization remains disabled by default: `rx_segment=0`.
 - Initial packaging targets x86-64 Linux; see [compatibility](docs/compatibility.md).
 
-This is the initial development baseline. The next milestone will move the driver
-to a pinned current stable upstream release and add a focused compatibility layer
+This remains an experimental development release. The next milestone will move
+the driver to a pinned current stable upstream release and add a focused compatibility layer
 for selected older kernels. That work, Linux 7.2 validation, and Arch packaging
-are **planned, not implemented in 0.1.0**. See the [roadmap](docs/roadmap.md).
+are **planned, not implemented in 0.1.1**. See the [roadmap](docs/roadmap.md).
 
 ## Install and enable
 
 Install the headers for the **exact target kernel**, then the source-only package:
 
 ```sh
-sudo apt install ./thunderbolt-net-dkms_0.1.0-1_all.deb
+sudo apt install ./thunderbolt-net-dkms_0.1.1-1_all.deb
 dkms status -m thunderbolt-net
 modinfo -n thunderbolt_net
 ```
@@ -74,7 +76,7 @@ the DKMS package and run only in a diskless QEMU guest with no external NIC.
 GitHub Actions checks source hygiene, builds on Ubuntu 24.04, Debian 13 and
 Ubuntu 26.04, runs kernel tests, and verifies package install/removal in isolated
 containers. Successful runs upload a `.deb`, an allowlisted source archive and
-SHA-256 checksums. A matching `v0.1.0` tag publishes an **experimental prerelease**
+SHA-256 checksums. A matching `v0.1.1` tag publishes an **experimental prerelease**
 only after all jobs pass. See [release procedure](docs/releasing.md).
 
 No private hardware runner or local network access is needed. Third-party
