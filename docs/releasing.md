@@ -12,9 +12,18 @@
    `tar -tzf`. Run `scripts/audit-deb.py` on the exact release artifact.
 6. Push reviewed source to the repository's `main` branch. Inspect the actual
    GitHub Actions run; configuring CI locally does not mean a hosted run passed.
-7. Create and push a tag matching `v$(cat VERSION)` using your intended public
+7. Preview `python3 scripts/release-notes.py`. **Every release, including
+   prereleases, must start with a prominent installation/upgrade guide**, before
+   the change list. Keep version-specific download links, checksum verification,
+   prerequisites, installation, opt-in configuration, activation/verification,
+   and a link to the full installation/rollback guide in that opening section.
+   Review this generated text when installation requirements change.
+8. Create and push a tag matching `v$(cat VERSION)` using your intended public
    author identity. The workflow verifies the tag/version and all jobs before
-   creating a prerelease with `.deb`, source tarball and `SHA256SUMS`.
+   creating a prerelease with `.deb`, source tarball and `SHA256SUMS`. It generates
+   installation-first notes followed by only that version's changelog entry;
+   do not replace the notes with the entire changelog or GitHub auto-generated
+   notes. Manual edits to a published release must retain the opening guide.
 
 Do not retag or overwrite a released version. Publish a new version for changes.
 Keep experimental releases marked prerelease until hardware and stability

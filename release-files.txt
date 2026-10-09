@@ -38,6 +38,7 @@ scripts/ci-linux.sh
 scripts/make-dist.py
 scripts/privacy.py
 scripts/qemu-test.py
+scripts/release-notes.py
 src/Makefile
 src/main.c
 src/rx_fixup.c

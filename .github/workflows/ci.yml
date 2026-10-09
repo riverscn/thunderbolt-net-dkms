@@ -24,6 +24,8 @@ jobs:
           persist-credentials: false
       - name: Verify sources and release allowlist
         run: make check
+      - name: Validate installation-first release notes
+        run: python3 scripts/release-notes.py > /dev/null
       - name: Ensure every tracked file is reviewed for release
         run: diff -u release-files.txt <(git ls-files | LC_ALL=C sort)
 
@@ -79,5 +81,6 @@ jobs:
         run: |
           test "$TAG" = "v$(cat VERSION)"
           (cd dist && sha256sum --check SHA256SUMS)
+          python3 scripts/release-notes.py --repository "$GH_REPO" > dist/release-notes.md
           gh release create "$TAG" dist/*.deb dist/*.tar.gz dist/SHA256SUMS \
-            --verify-tag --prerelease --title "$TAG" --notes-file CHANGELOG.md
+            --verify-tag --prerelease --title "$TAG" --notes-file dist/release-notes.md
