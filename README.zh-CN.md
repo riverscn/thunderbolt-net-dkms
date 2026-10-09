@@ -27,7 +27,28 @@ TCP 包，先验证数据与校验和，再补充保守的 GSO 分段信息；�
 
 ## 安装
 
-先安装与目标内核完全匹配的头文件，再安装：
+**必须先安装前置依赖。** Debian / Ubuntu 使用发行版内核时：
+
+```sh
+sudo apt update
+sudo apt install build-essential dkms curl ca-certificates coreutils kmod ethtool \
+  "linux-headers-$(uname -r)"
+```
+
+Proxmox VE 宿主机使用 PVE 内核时，改用以下命令：
+
+```sh
+sudo apt update
+sudo apt install build-essential dkms curl ca-certificates coreutils kmod ethtool \
+  "proxmox-headers-$(uname -r)"
+```
+
+已经是 root 时省略 `sudo`。以上安装编译工具、DKMS、内核头文件，以及下载、
+校验和检查驱动所需工具。DKMS 必须不低于 3.0.10；头文件必须与当前
+`uname -r` 完全匹配，PVE 的头文件不能用通用 Debian / Ubuntu 头文件替代。
+依赖检查方法见 [安装前置条件](docs/installation.md#install-prerequisites-first)。
+
+下载 release 包并通过 `SHA256SUMS` 校验后，再安装驱动：
 
 ```sh
 sudo apt install ./thunderbolt-net-dkms_0.1.1-1_all.deb

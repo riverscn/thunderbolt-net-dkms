@@ -32,7 +32,26 @@ are **planned, not implemented in 0.1.1**. See the [roadmap](docs/roadmap.md).
 
 ## Install and enable
 
-Install the headers for the **exact target kernel**, then the source-only package:
+**Install prerequisites first.** On Debian / Ubuntu with their distribution
+kernel:
+
+```sh
+sudo apt update
+sudo apt install build-essential dkms curl ca-certificates coreutils kmod ethtool \
+  "linux-headers-$(uname -r)"
+```
+
+On a Proxmox VE host with a Proxmox kernel, use this instead:
+
+```sh
+sudo apt update
+sudo apt install build-essential dkms curl ca-certificates coreutils kmod ethtool \
+  "proxmox-headers-$(uname -r)"
+```
+
+If already root, omit `sudo`. DKMS must be >= 3.0.10 and the headers must match
+the **exact running kernel**. See [prerequisite checks](docs/installation.md#install-prerequisites-first).
+Download the release package and verify `SHA256SUMS`, then install:
 
 ```sh
 sudo apt install ./thunderbolt-net-dkms_0.1.1-1_all.deb

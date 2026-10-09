@@ -15,7 +15,8 @@
 7. Preview `python3 scripts/release-notes.py`. **Every release, including
    prereleases, must start with a prominent installation/upgrade guide**, before
    the change list. Keep version-specific download links, checksum verification,
-   prerequisites, installation, opt-in configuration, activation/verification,
+   prerequisite `apt update` / `apt install` commands (separate distribution
+   and Proxmox headers), installation, opt-in configuration, activation/verification,
    and a link to the full installation/rollback guide in that opening section.
    Review this generated text when installation requirements change.
 8. Create and push a tag matching `v$(cat VERSION)` using your intended public

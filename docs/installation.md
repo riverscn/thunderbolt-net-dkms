@@ -5,14 +5,61 @@
 Use an x86-64 system with a supported kernel, matching development headers,
 DKMS >= 3.0.10, and an enabled Thunderbolt networking subsystem.
 The stock network driver must be a loadable module (`CONFIG_THUNDERBOLT_NET=m`);
-a driver built into the kernel cannot be replaced this way. For Ubuntu or
-Debian, matching headers commonly use `linux-headers-$(uname -r)`. Proxmox uses
-its own matching header packages: follow the documentation for your installed
-Proxmox release. Do not substitute a different kernel's headers.
+a driver built into the kernel cannot be replaced this way.
 
-Package builds require `build-essential debhelper dh-dkms python3`. `make check`
-requires Python 3.9 or newer. No test requires a Thunderbolt cable unless
-explicitly marked as a hardware test.
+## Install prerequisites first
+
+Before installing the `.deb`, install DKMS, the compiler/build tools, the headers
+for the **currently running kernel**, and the download/verification tools used
+below. Choose the command for your kernel provider. Commands use `sudo`; when
+already root (for example, in the Proxmox host console), omit `sudo`.
+
+**Debian / Ubuntu with their distribution kernel:**
+
+```sh
+sudo apt update
+sudo apt install build-essential dkms curl ca-certificates coreutils kmod ethtool \
+  "linux-headers-$(uname -r)"
+```
+
+**Proxmox VE host with a Proxmox kernel:**
+
+```sh
+sudo apt update
+sudo apt install build-essential dkms curl ca-certificates coreutils kmod ethtool \
+  "proxmox-headers-$(uname -r)"
+```
+
+`build-essential` supplies the compiler and `make`; `dkms` builds and manages the
+module. `curl` and `ca-certificates` support HTTPS downloads; `coreutils` supplies
+`sha256sum`; `kmod` and `ethtool` provide module and network verification tools.
+APT also installs these packages' dependencies.
+
+Proxmox headers must match the complete `uname -r` value, including `-pve`.
+Generic Debian/Ubuntu headers cannot replace them. If the exact header package
+is unavailable, check the distribution/vendor repositories or boot a supported
+kernel with available matching headers before continuing.
+
+Check the prerequisites:
+
+```sh
+dkms --version
+test -r "/lib/modules/$(uname -r)/build/Makefile" && echo "Kernel headers found"
+```
+
+DKMS must be at least 3.0.10, and the header check must succeed. Requirements
+above apply to both release-package and direct DKMS source installation.
+See the [Debian kernel header documentation](https://kernel-team.pages.debian.net/kernel-handbook/ch-packaging.html)
+and [Proxmox header package definitions](https://github.com/proxmox/pve-kernel/blob/master/debian/control.in).
+
+Only when **building the Debian package itself from source**, also install:
+
+```sh
+sudo apt install debhelper dh-dkms python3
+```
+
+`make check` requires Python 3.9 or newer. No test requires a Thunderbolt cable
+unless explicitly marked as a hardware test.
 
 ## Install a release package
 

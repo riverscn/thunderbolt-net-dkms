@@ -34,10 +34,43 @@ def render(repository):
 
 **Experimental, source-only DKMS package for x86-64 Linux.** Use a
 [supported kernel]({docs}/compatibility.md), its exact matching development
-headers, and DKMS >= 3.0.10. Proxmox users need matching **Proxmox headers**;
-generic Debian/Ubuntu headers cannot replace them.
+headers, and DKMS >= 3.0.10.
 
-**1. Download, verify, and install this version.** Run in a new directory:
+**1. Install prerequisites before the driver package.** Choose the command for
+your kernel provider. If already root (for example, in the Proxmox host console),
+omit `sudo`.
+
+Debian / Ubuntu with their distribution kernel:
+
+```sh
+sudo apt update
+sudo apt install build-essential dkms curl ca-certificates coreutils kmod ethtool \\
+  "linux-headers-$(uname -r)"
+```
+
+Proxmox VE host with a Proxmox kernel:
+
+```sh
+sudo apt update
+sudo apt install build-essential dkms curl ca-certificates coreutils kmod ethtool \\
+  "proxmox-headers-$(uname -r)"
+```
+
+These install the compiler/build tools, DKMS, exact kernel headers, and the
+download/checksum/module/network tools used in this guide. Proxmox requires
+**Proxmox headers** matching the complete `uname -r` value, including `-pve`;
+generic Debian/Ubuntu headers cannot replace them. If the exact headers are
+unavailable, check the vendor repositories or boot a supported kernel with
+matching headers before continuing.
+
+```sh
+dkms --version
+test -r "/lib/modules/$(uname -r)/build/Makefile" && echo "Kernel headers found"
+```
+
+Confirm DKMS >= 3.0.10 and a successful header check.
+
+**2. Download, verify, and install this version.** Run in a new directory:
 
 ```sh
 curl -fLO {download}/{deb}
@@ -53,7 +86,7 @@ modinfo -F version thunderbolt_net
 Confirm that the `.deb` checksum is `OK`. Installing the package does not replace
 the driver already loaded in memory.
 
-**2. Opt in to oversized TCP RX normalization if needed.** To enable the
+**3. Opt in to oversized TCP RX normalization if needed.** To enable the
 macOS TSO forwarding workaround, install the provided configuration:
 
 ```sh
@@ -64,7 +97,7 @@ sudo install -m 644 \\
 
 An existing opt-in configuration is retained on upgrade.
 
-**3. Activate and verify.** Reload from a local console or an independent
+**4. Activate and verify.** Reload from a local console or an independent
 management connection; this interrupts Thunderbolt networking:
 
 ```sh
