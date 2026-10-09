@@ -26,6 +26,25 @@ Segment size is inferred from `min(interface MTU, rx_segment_mtu)` minus headers
 The Thunderbolt transport does not supply the original TCP segment boundaries.
 This limitation matters for authentication and transport extensions.
 
+## Ethernet header length and GRO ordering
+
+The receive path removes the 12-byte Thunderbolt transport header before handing
+the reconstructed Ethernet packet to `eth_type_trans()` and GRO. The net device
+must therefore keep the `ETH_HLEN` value set by `alloc_etherdev()`. Transport
+space is accounted for separately in `needed_headroom`.
+
+Adding the transport header to `hard_header_len` makes it 26 bytes. In
+`gro_list_prepare()`, the non-Ethernet-length comparison then includes the first
+12 bytes of the IP header. Length, IPv4 ID or checksum differences can mark two
+packets from the same TCP flow as different flows. An earlier packet held by GRO
+can consequently be delivered after a later packet that bypasses aggregation.
+See the [Linux v7.0 GRO implementation](https://github.com/torvalds/linux/blob/v7.0/net/core/gro.c).
+
+This correction applies with both `rx_segment=0` and `rx_segment=1`; it does not
+replace oversized-packet normalization for forwarding. It changes no wire
+format, MTU, checksum-validation policy or offload feature flags. It is not a
+general fix for all TCP retransmissions or Thunderbolt hotplug delays.
+
 ## Scope
 
 Supported: ordinary unfragmented IPv4 TCP without IP options, IPv6 with an

@@ -54,7 +54,7 @@ def main():
         (fs / 'bin/sh').symlink_to('busybox')
         copy_binary('/usr/sbin/ip' if pathlib.Path('/usr/sbin/ip').exists() else '/usr/bin/ip')
         ip = '/usr/sbin/ip' if (fs / 'usr/sbin/ip').exists() else '/usr/bin/ip'
-        for name in ('thunderbolt_net', 'tbnet_rx_test', 'tbnet_path_test'):
+        for name in ('thunderbolt_net', 'tbnet_rx_test', 'tbnet_path_test', 'tbnet_order_test'):
             shutil.copy2(ROOT / 'src' / (name + '.ko'), fs / (name + '.ko'))
         dependencies = []
         for name in ('thunderbolt', 'bridge'):
@@ -133,6 +133,14 @@ for n in 1 2 3 4 5 6 7 8; do
  echo "$n" > /sys/module/tbnet_path_test/parameters/trigger
 done
 '''
+        init += '''for legacy in 0 1; do
+ $B insmod /tbnet_order_test.ko legacy_header=$legacy
+ $IP link set tborder0 addrgenmode none
+ $IP link set tborder0 up
+ echo 1 > /sys/module/tbnet_order_test/parameters/trigger
+ $B rmmod tbnet_order_test
+done
+'''
         (fs / 'init').write_text(init)
         (fs / 'init').chmod(0o755)
         names = b'.\0' + b'\0'.join(str(p.relative_to(fs)).encode() for p in sorted(fs.rglob('*'))) + b'\0'
@@ -154,7 +162,19 @@ done
         assert 'TBNET_TEST SUMMARY tests=27 failures=0' in text, text[-6000:]
         assert len(re.findall(r'TBNET_PATH PASS ', text)) == 16, text[-6000:]
         assert not re.search(r'TBNET_PATH FAIL|BUG:|WARNING:|UBSAN:|Oops:|Call Trace:', text), text[-6000:]
-        print('QEMU passed: 27 unit tests, 16 bridge/router cases, driver load/unload')
+        summaries = re.findall(
+            r'TBNET_ORDER SUMMARY cases=(\d+) reordered=(\d+) errors=(\d+) '
+            r'header=(\d+) headroom=(\d+)', text)
+        assert len(summaries) == 2, text[-6000:]
+        fixed, legacy = [tuple(map(int, item)) for item in summaries]
+        assert fixed == (256, 0, 0, 14, 12), fixed
+        # Different supported kernels may hold/merge different packet subsets.
+        # Require real reordering, never loss or corruption, in the old layout.
+        assert legacy[0] == 256 and 0 < legacy[1] <= 256, legacy
+        assert legacy[2:] == (0, 26, 0), legacy
+        assert 'TBNET_ORDER ERROR' not in text, text[-6000:]
+        print(f'GRO ordering: 256 corrected cases passed; legacy control reordered {legacy[1]}/256')
+        print('QEMU passed: 27 unit tests, 16 bridge/router cases, GRO ordering, driver load/unload')
 
 if __name__ == '__main__':
     main()

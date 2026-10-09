@@ -14,8 +14,9 @@ separate from the receive GSO workaround. It must not be presented as original
 work of this project or as an upstream TSO fix.
 
 Project changes add `rx_fixup.c/.h`, module parameters, validation counters,
-the receive integration, version metadata, an older-kernel speed-constant
-compatibility definition, tests and packaging. The workaround
+the receive integration, an Ethernet-header-length/headroom correction for GRO,
+version metadata, an older-kernel speed-constant compatibility definition,
+tests and packaging. The workaround
 is experimental and has not been represented as an accepted upstream patch.
 Use `diff -u upstream/main.c src/main.c` to review the driver integration; the
 additional RX implementation is separate.

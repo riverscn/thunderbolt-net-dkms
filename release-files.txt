@@ -42,8 +42,10 @@ src/Makefile
 src/main.c
 src/rx_fixup.c
 src/rx_fixup.h
+src/tests/rx_fixup_order.c
 src/tests/rx_fixup_path.c
 src/tests/rx_fixup_under_test.c
+src/tests/test_order.c
 src/tests/test_path.c
 src/tests/test_rx.c
 src/trace.c
