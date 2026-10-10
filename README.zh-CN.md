@@ -9,21 +9,20 @@ TCP 包，先验证数据与校验和，再补充保守的 GSO 分段信息；�
 本项目是独立维护的实验，不代表 Linux、Apple、Intel 或任何发行版的官方修复。
 它不处理所有雷电枚举、热插拔、休眠、DHCP 或 TSO 问题。
 
-## 当前状态
+## 0.2.0 版本
 
-- 驱动基于 Linux v7.0，保留原始作者与许可证声明。
-- 0.1.1 修正 GRO 的以太网头长度识别，改善同一 TCP 流的收包顺序；
-  这项修正不依赖 `rx_segment` 参数，加载本版本后始终生效。
-- 实机测试为 Linux 7.0、macOS 开启 TSO、MTU 1500。
-- 三组交替短测中，本机 IPv4 吞吐与原驱动相差约 2% 以内。
-- 验证了实际 IPv4 Docker 转发及隔离内核的 IPv4/IPv6 网桥、路由路径。
-- 纯二层桥接的实机验收和长期稳定性验证仍有待完成。
-- 超大 TCP 包的 RX 规范化仍默认关闭，使用 `rx_segment=1` 显式启用。
-- 首版面向 x86-64；内核范围和测试层次见 [兼容性](docs/compatibility.md)。
+本次迭代增加可选的 RX 页面回收，串行化接收启动与停止流程，并回移三项上游
+连接清理修复。保留 0.1.1 的 GRO 顺序修正和保守的超大 TCP 包分段信息。
 
-当前版本作为开发基线保存。下一阶段计划更新到明确固定的上游最新稳定版驱动，
-集中维护旧内核兼容层，并增加 Linux 7.2 验证与 Arch 打包。
-这些工作**尚未在 0.1.1 中实现**，具体范围见 [开发路线](docs/roadmap.md)。
+- `rx_page_pool=0`、`rx_segment=0` 仍为默认值，两项功能分别启用。
+- 上游驱动基线仍为 Linux v7.0；本次不增加 Linux 7.2 支持或 Arch 打包。
+- 设计见 [RX 页面回收](docs/rx-page-pool.md)，实测结果和覆盖范围见
+  [当前验证报告](docs/validation.md)，内核范围见 [兼容性](docs/compatibility.md)。
+
+最新物理插拔测试在五分钟窗口内未恢复连接，PR 暂保留 Draft；具体结果见验证报告。
+
+软件包仍为实验性项目。重新加载时应保留独立管理通路；需要完整恢复原行为时
+[回退到 0.1.1](docs/installation.md#return-to-the-011-baseline)。本 PR 不代表稳定版发布。
 
 ## 安装
 
@@ -51,7 +50,7 @@ sudo apt install build-essential dkms curl ca-certificates coreutils kmod ethtoo
 下载 release 包并通过 `SHA256SUMS` 校验后，再安装驱动：
 
 ```sh
-sudo apt install ./thunderbolt-net-dkms_0.1.1-1_all.deb
+sudo apt install ./thunderbolt-net-dkms_0.2.0-1_all.deb
 dkms status -m thunderbolt-net
 modinfo -n thunderbolt_net
 ```

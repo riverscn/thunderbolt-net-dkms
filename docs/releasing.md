@@ -5,13 +5,14 @@
 2. Enable branch protection for `main` and require the source and all Linux CI
    jobs. Enable GitHub private vulnerability reporting if available.
 3. Keep `VERSION`, `dkms.conf`, and `debian/changelog` in sync. The current package
-   uses upstream version `0.1.1` and Debian revision `-1`.
+   uses upstream version `0.2.0` and Debian revision `-1`.
 4. Review `release-files.txt`; every tracked file must appear there. Run source
    checks and all container tests. Keep private audit deny-lists outside Git.
 5. Inspect the `.deb` with `dpkg-deb --contents` and the source archive with
    `tar -tzf`. Run `scripts/audit-deb.py` on the exact release artifact.
-6. Push reviewed source to the repository's `main` branch. Inspect the actual
-   GitHub Actions run; configuring CI locally does not mean a hosted run passed.
+6. Push the iteration branch and open a pull request. Inspect the actual GitHub
+   Actions run on the final revision; a configured workflow is not a passing run.
+   Merge and publish only after reviewing the validation report and checks.
 7. Preview `python3 scripts/release-notes.py`. **Every release, including
    prereleases, must start with a prominent installation/upgrade guide**, before
    the change list. Keep version-specific download links, checksum verification,
@@ -19,8 +20,8 @@
    and Proxmox headers), installation, opt-in configuration, activation/verification,
    and a link to the full installation/rollback guide in that opening section.
    Review this generated text when installation requirements change.
-8. Create and push a tag matching `v$(cat VERSION)` using your intended public
-   author identity. The workflow verifies the tag/version and all jobs before
+8. Create and push a tag matching `v$(cat VERSION)` on the exact branch commit
+   that passed CI, using your intended public author identity. The workflow verifies the tag/version and all jobs before
    creating a prerelease with `.deb`, source tarball and `SHA256SUMS`. It generates
    installation-first notes followed by only that version's changelog entry;
    do not replace the notes with the entire changelog or GitHub auto-generated

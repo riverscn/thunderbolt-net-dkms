@@ -3,13 +3,17 @@
 Build, software-path tests, and hardware interoperability are separate claims.
 A successful compile does not establish cable, firmware or macOS compatibility.
 
-| Target | CI role | Hardware status |
-| --- | --- | --- |
-| Ubuntu 24.04 GA kernel | Build, QEMU, package lifecycle | Not independently validated |
-| Debian 13 stock kernel | Build, QEMU, package lifecycle | Not independently validated |
-| Ubuntu 26.04 GA kernel | Build, QEMU, package lifecycle | Linux 7.0 tested with a macOS peer |
-| Proxmox `7.0.14-20-pve` | Manual builds with matching headers passed; not in CI | Temporary candidate A/B/A with a macOS peer; packaged DKMS lifecycle not validated |
-| Linux 7.2 / current Arch kernel | Planned; excluded by the current DKMS build gate | Not validated |
+The 0.2.0 driver uses the Linux v7.0 source baseline with three connection
+cleanup backports. [Current validation](validation.md) distinguishes hardware
+results from builds and guest-only tests.
+
+| Target | Validation path |
+| --- | --- |
+| Ubuntu 24.04 | CI build, QEMU and DKMS lifecycle |
+| Debian 13 | CI build, QEMU and DKMS lifecycle |
+| Ubuntu 26.04 | CI build, QEMU, RX lifecycle model and DKMS lifecycle |
+| Proxmox 7.0.14-23-pve | Manual hardware validation with a macOS peer |
+| Linux 7.2 / current Arch kernel | Not supported by the current build gate |
 
 The initial build gate is x86-64, Linux 6.8–6.19 or 7.0. This is an allowed
 development range, not a promise that every intermediate/vendor kernel works.
@@ -26,16 +30,6 @@ Peer testing covered TSO enabled and MTU 1500. Synthetic tests cover other MTUs
 and packet edge cases; those are not substitutes for hardware validation.
 PCI passthrough controller wake-up and link negotiation remain outside the RX
 normalization change. No runtime-PM workaround is installed by this package.
-
-The manual Proxmox check compiled the unchanged 0.1.0 module and verified its
-target kernel version metadata. It did not install or load the module. This is
-build evidence only, not a successful Proxmox DKMS lifecycle or hardware test.
-
-A subsequent candidate containing the 0.1.1 GRO header-length correction was
-built and temporarily loaded on that Proxmox kernel for the A/B/A measurements
-in [testing](testing.md). Its version label differed from the release package;
-the driver source change was the same. That trial does not validate installation
-or upgrade of the published `.deb`, reboot/hotplug behavior or long-term use.
 
 The next milestone targets a current stable driver baseline with explicit
 backward compatibility. Planned kernel families are not support guarantees;

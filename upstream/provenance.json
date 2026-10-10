@@ -11,5 +11,23 @@
     "trace.c": "892e55352fa73aa7e0e3822bd2444b0ec2ea0dc056bf08d112bda66b62d0a80f",
     "trace.h": "00556617e72cda84265feaca33aab5a3e4bdc3891d2ed53b0e2fe194b340fb5a"
   },
-  "additional_upstream_fix": "55d9895f8997"
+  "additional_upstream_fix": "55d9895f8997",
+  "local_unreleased_backports": [
+    {
+      "commit": "68bf02b6b4ad3f748c6db71fd77b6c0402d252f4",
+      "author": "Fan XinRan",
+      "subject": "net: thunderbolt: Tear down DMA paths before stopping the rings",
+      "adaptation": "Use the existing RX quiesce helper after disabling paths."
+    },
+    {
+      "commit": "2f1463554d0561a2fead81e3888604e5c1125e29",
+      "author": "Fan Ye",
+      "subject": "net: thunderbolt: Release the Rx HopID that was handed out on mismatch"
+    },
+    {
+      "commit": "3c8b26ebf525ba5960510f48c6e9936a79ebe76f",
+      "author": "Fan Ye",
+      "subject": "net: thunderbolt: Mark the connection down when bringing it up fails"
+    }
+  ]
 }

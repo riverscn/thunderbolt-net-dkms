@@ -1,5 +1,8 @@
 # Design and limits
 
+For RX recycling and lifecycle details, see [RX page recycling](rx-page-pool.md).
+Its allocator/lifecycle evidence is separate from the baseline hardware results below.
+
 Some peers send a TCP aggregate larger than the receiving interface's MTU.
 The stock receive path can deliver such data locally without attaching GSO
 metadata. A later forwarding path may treat it as an ordinary oversized packet
