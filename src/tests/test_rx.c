@@ -295,6 +295,55 @@ result:
 	pr_info("TBNET_TEST %s %u - %s\n", ok ? "ok" : "not ok", tests, name);
 }
 
+#if defined(SKB_RX_GSO_MTU_SUPPORTED) && !defined(TBNET_NETWORK_TEST)
+static unsigned int run_core_checks(void)
+{
+	unsigned int bad = 0, n;
+
+	for (n = 0; n < 4; n++) {
+		struct fixture f = { .payload = 20001, .mtu = 9000,
+			.nonlinear = true, .timestamp = true,
+			.v6 = n & 1, .tags = (n & 2) ? 2 : 0 };
+		struct sk_buff *skb = make_packet(&f), *copy = NULL, *segs = NULL;
+		unsigned int old_mss = 9000 - (f.v6 ? 40 : 20) - 32;
+		unsigned int new_mss = 1280 - (f.v6 ? 40 : 20) - 32;
+		bool ok = false;
+
+		if (!skb)
+			goto result;
+		skb = tbnet_rx_fixup(skb, 9000);
+		if (IS_ERR(skb)) {
+			skb = NULL;
+			goto result;
+		}
+		copy = skb_clone(skb, GFP_KERNEL);
+		if (!copy || skb_rx_gso_clamp_mtu(copy, 1280))
+			goto result;
+		ok = skb_shinfo(skb)->gso_size == old_mss &&
+		     skb_shinfo(copy)->gso_size == new_mss;
+		ok &= !skb_rx_gso_clamp_mtu(copy, 9000) &&
+		      skb_shinfo(copy)->gso_size == new_mss;
+		/* A normal GSO packet must retain its original segmentation. */
+		skb_shinfo(skb)->flags &= ~SKBFL_RX_GSO_MTU;
+		ok &= !skb_rx_gso_clamp_mtu(skb, 1280) &&
+		      skb_shinfo(skb)->gso_size == old_mss;
+		local_bh_disable();
+		segs = __skb_gso_segment(copy, 0, false);
+		local_bh_enable();
+		f.mtu = 1280;
+		ok &= !IS_ERR_OR_NULL(segs) && validate(segs, &f);
+result:
+		if (!IS_ERR_OR_NULL(segs))
+			kfree_skb_list(segs);
+		kfree_skb(copy);
+		kfree_skb(skb);
+		bad += !ok;
+	}
+	pr_info("TBNET_CORE SUMMARY tests=4 failures=%u\n", bad);
+	return bad;
+}
+#endif
+
 #ifndef TBNET_NETWORK_TEST
 static int __init test_init(void)
 {
@@ -368,6 +417,9 @@ static int __init test_init(void)
 		f.mtu = 1280;
 		run_case("explicit cap respects smaller ingress", f, 1);
 	}
+#ifdef SKB_RX_GSO_MTU_SUPPORTED
+	failures += run_core_checks();
+#endif
 	free_netdev(testdev);
 	pr_info("TBNET_TEST SUMMARY tests=%u failures=%u\n", tests, failures);
 	return failures ? -EINVAL : 0;

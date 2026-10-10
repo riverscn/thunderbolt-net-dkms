@@ -15,6 +15,12 @@
 
 static struct net_device *peer, *ingress;
 static unsigned int mode, cap;
+#ifdef SKB_RX_GSO_MTU_SUPPORTED
+static bool core_clamp = true;
+#else
+static bool core_clamp;
+#endif
+module_param(core_clamp, bool, 0444);
 static unsigned long aggregates, rebuilt, failures, min_mss = 65535;
 module_param(mode, uint, 0444);
 module_param(cap, uint, 0444);
@@ -83,7 +89,7 @@ static netdev_tx_t link_xmit(struct sk_buff *skb, struct net_device *dev)
 	if (dev == peer && skb_is_gso(skb)) {
 		aggregates++;
 		min_mss = min_t(unsigned long, min_mss, skb_shinfo(skb)->gso_size);
-		if (mode == 1) {
+		if (mode) {
 			struct sk_buff *copy = wire_copy(skb);
 
 			dev_kfree_skb(skb);
@@ -96,6 +102,11 @@ static netdev_tx_t link_xmit(struct sk_buff *skb, struct net_device *dev)
 				failures++;
 				return NETDEV_TX_OK;
 			}
+#ifdef SKB_RX_GSO_MTU_SUPPORTED
+			/* Negative control: same packet and helper, no core opt-in. */
+			if (mode == 2)
+				skb_shinfo(skb)->flags &= ~SKBFL_RX_GSO_MTU;
+#endif
 			rebuilt++;
 		}
 	}
@@ -124,7 +135,7 @@ static int __init link_init(void)
 {
 	int err;
 
-	if (mode > 1 || (cap && (cap < 1280 || cap > 9000)))
+	if (mode > 2 || (cap && (cap < 1280 || cap > 9000)))
 		return -EINVAL;
 	peer = alloc_netdev(0, "tbpeer0", NET_NAME_UNKNOWN, link_setup);
 	ingress = alloc_netdev(0, "tbrx0", NET_NAME_UNKNOWN, link_setup);

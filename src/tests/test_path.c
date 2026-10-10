@@ -18,6 +18,11 @@ static int trigger;
 static bool mtu_probe;
 static unsigned int mtu_cap = 1500;
 static unsigned int route_limit, probe_payload = 20001;
+#ifdef SKB_RX_GSO_MTU_SUPPORTED
+#define CORE_CLAMP 1
+#else
+#define CORE_CLAMP 0
+#endif
 static unsigned int feedback_count, feedback_mtu, feedback_quote_ok;
 static unsigned int feedback_stride, feedback_payload;
 module_param(mtu_probe, bool, 0600);
@@ -137,7 +142,7 @@ static int run_path(const char *value, const struct kernel_param *kp)
 	struct fixture f = { .payload = 20001, .mtu = 1500, .nonlinear = true };
 	struct sk_buff *skb, *next, *list;
 	unsigned int packets = 0, max_ip_len = 0, oversized = 0;
-	unsigned int ingress, egress, replies, reported_mtu, quoted_ok;
+	unsigned int ingress, egress, replies, reported_mtu, quoted_ok, inferred_mtu;
 	bool fix, ok, gro;
 	int v, err = kstrtoint(value, 0, &v);
 
@@ -196,6 +201,9 @@ static int run_path(const char *value, const struct kernel_param *kp)
 	reported_mtu = feedback_mtu;
 	quoted_ok = feedback_quote_ok;
 	spin_unlock_bh(&capture_lock);
+	inferred_mtu = f.mtu;
+	if (mtu_probe && CORE_CLAMP)
+		f.mtu = min(f.mtu, min(egress, route_limit ? route_limit : egress));
 	for (skb = list; skb; skb = skb->next) {
 		unsigned int len = skb->len > ETH_HLEN ? skb->len - ETH_HLEN : 0;
 
@@ -208,11 +216,11 @@ static int run_path(const char *value, const struct kernel_param *kp)
 		/* The software sink accepts oversized frames so they are visible.
 		 * Payload validity does not imply the output fits its declared MTU.
 		 */
-		pr_info("TBNET_MTU topology=%s ipv=%d gro=%d ingress=%u egress=%u cap=%u effective=%u received=%u max_ip_len=%u oversized=%u valid=%d route_limit=%u payload=%u feedback=%u feedback_mtu=%u quote_ok=%u\n",
+		pr_info("TBNET_MTU topology=%s ipv=%d gro=%d ingress=%u egress=%u cap=%u effective=%u received=%u max_ip_len=%u oversized=%u valid=%d route_limit=%u payload=%u feedback=%u feedback_mtu=%u quote_ok=%u core_clamp=%u\n",
 			netif_is_bridge_port(testdev) ? "bridge" : "route",
-			f.v6 ? 6 : 4, gro, ingress, egress, mtu_cap, f.mtu,
+			f.v6 ? 6 : 4, gro, ingress, egress, mtu_cap, inferred_mtu,
 			packets, max_ip_len, oversized, list && validate(list, &f),
-			route_limit, f.payload, replies, reported_mtu, quoted_ok);
+			route_limit, f.payload, replies, reported_mtu, quoted_ok, CORE_CLAMP);
 		kfree_skb_list(list);
 		trigger = v;
 		return 0;

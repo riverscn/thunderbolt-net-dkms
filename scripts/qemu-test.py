@@ -15,7 +15,8 @@ import tempfile
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 def run(argv, **kwargs):
-    return subprocess.run(argv, check=True, timeout=120, **kwargs)
+    kwargs.setdefault('timeout', 120)
+    return subprocess.run(argv, check=True, **kwargs)
 
 def main():
     ap = argparse.ArgumentParser()
@@ -198,12 +199,19 @@ echo N > /sys/module/tbnet_path_test/parameters/mtu_probe
 done
 '''
         init += r'''$B rmmod tbnet_path_test
+$B insmod /tbnet_tcp_test.ko
+core=$($B cat /sys/module/tbnet_tcp_test/parameters/core_clamp)
+$B rmmod tbnet_tcp_test
+policies="preserve auto capped"
+test "$core" != Y || policies="$policies unmarked"
+echo "TBNET_CORE_ENABLED=$core"
 for ipv in 4 6; do
- for policy in preserve auto capped; do
+ for policy in $policies; do
   mode=1
   cap=0
   test "$policy" != preserve || mode=0
   test "$policy" != capped || cap=1280
+  test "$policy" != unmarked || mode=2
   $B insmod /tbnet_tcp_test.ko mode="$mode" cap="$cap"
   $IP netns add sender
   $IP netns add receiver
@@ -262,7 +270,7 @@ done
                    '-display', 'none', '-monitor', 'none', '-serial', 'stdio',
                    '-nic', 'none', '-no-reboot', '-kernel', str(image),
                    '-initrd', str(archive), '-append', 'console=ttyS0 rdinit=/init panic=-1 log_buf_len=4M quiet']
-        result = run(command, capture_output=True, text=True)
+        result = run(command, capture_output=True, text=True, timeout=240)
         build = ROOT / 'build'
         build.mkdir(exist_ok=True)
         (build / ('qemu-' + kernel + '.log')).write_text(result.stdout + result.stderr)
@@ -275,11 +283,15 @@ done
         assert len(mtu_lines) == 80, (len(mtu_lines), text[-8000:])
         observations = [dict(field.split('=') for field in line.split())
                         for line in mtu_lines]
+        core_clamp = 'TBNET_CORE_ENABLED=Y' in result.stdout
+        if core_clamp:
+            assert 'TBNET_CORE SUMMARY tests=4 failures=0' in text
         for row in observations:
+            assert row['core_clamp'] == str(int(core_clamp)), row
             limit = min(int(row['egress']), int(row['route_limit']) or int(row['egress']))
             packet_size = int(row['payload']) + (40 if row['ipv'] == '4' else 60)
             safe = min(int(row['effective']), packet_size) <= limit
-            if safe:
+            if safe or core_clamp:
                 assert row['valid'] == '1' and row['oversized'] == '0', row
                 assert int(row['max_ip_len']) <= limit, row
                 assert row['feedback'] == '0', row
@@ -304,7 +316,7 @@ done
                     'snd_mss', 'retrans', 'aggregates', 'rebuilt', 'failures', 'min_mss')
             row = dict(zip(keys, match.groups()))
             assert row['failures'] == '0' and int(row['aggregates']) > 0, row
-            if row['policy'] != 'auto':
+            if row['policy'] in ('preserve', 'capped') or (core_clamp and row['policy'] == 'auto'):
                 assert row['success'] == '1', row
             if row['policy'] == 'preserve':
                 assert row['rebuilt'] == '0' and row['pmtu'] == '1280', row
@@ -313,7 +325,7 @@ done
                 assert int(row['rebuilt']) > 0, row
             sessions.append(row)
             print('TCP observation:', row)
-        assert len(sessions) == 6, result.stdout[-10000:]
+        assert len(sessions) == (8 if core_clamp else 6), result.stdout[-10000:]
         (build / ('tcp-' + kernel + '.json')).write_text(
             json.dumps(sessions, indent=2) + '\n')
         summaries = re.findall(
