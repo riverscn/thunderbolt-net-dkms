@@ -32,7 +32,7 @@ def render(repository):
     deb = f'thunderbolt-net-dkms_{package.group(1)}_all.deb'
     return f'''## Installation / upgrade
 
-**0.2.0: optional RX page recycling and RX lifecycle fixes.**
+**{version}: optional RX page recycling and RX lifecycle fixes.**
 Page recycling is disabled by default. Review the
 [current validation report]({docs}/validation.md) before deployment.
 This is an experimental, source-only DKMS package for x86-64 Linux. Use a

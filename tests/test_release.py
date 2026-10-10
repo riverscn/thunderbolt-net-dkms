@@ -49,6 +49,29 @@ class ReleaseTests(unittest.TestCase):
         self.assertIn('disabled by default', opening)
         self.assertNotIn('riverscn/thunderbolt-net-dkms', text)
 
+    def test_release_version_is_consistent_after_version_bump(self):
+        spec = importlib.util.spec_from_file_location('notes', ROOT / 'scripts/release-notes.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = pathlib.Path(tmp)
+            (fixture / 'debian').mkdir()
+            (fixture / 'VERSION').write_text('0.3.0\n')
+            (fixture / 'debian/changelog').write_text(
+                'thunderbolt-net (0.3.0-2) unstable; urgency=medium\n')
+            (fixture / 'CHANGELOG.md').write_text(
+                '# Changelog\n\n## 0.3.0\n\n- Next release fixture.\n'
+                '\n## 0.2.0\n\n- Previous release fixture.\n')
+            module.ROOT = fixture
+            text = module.render('example/thunderbolt-net-dkms')
+        self.assertIn('**0.3.0:', text.split('## Changes in ', 1)[0])
+        self.assertIn('/releases/download/v0.3.0/thunderbolt-net-dkms_0.3.0-2_all.deb', text)
+        self.assertIn('/blob/v0.3.0/docs/installation.md', text)
+        self.assertIn('Expect version `0.3.0`', text)
+        self.assertIn('## Changes in v0.3.0\n\n- Next release fixture.', text)
+        self.assertNotIn('0.2.0', text)
+        self.assertNotIn('Previous release fixture.', text)
+
     def test_rx_model_uses_the_tested_driver_functions(self):
         spec = importlib.util.spec_from_file_location(
             'extract', ROOT / 'tests/rx-lifecycle/extract.py')
