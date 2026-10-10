@@ -33,6 +33,11 @@ class HardwareTestHelperTests(unittest.TestCase):
         self.assertNotIn('somebody', out)
         self.assertFalse(findings(out), out)
 
+    def test_hostname_redaction_matches_whole_names(self):
+        text = 'pve kernel: 7.0.14-23-pve proxmox-headers root@pve pve.lan'
+        self.assertEqual(hw.redact(text, [('pve', '<host>')]),
+                         '<host> kernel: 7.0.14-23-pve proxmox-headers root@<host> <host>.lan')
+
     def test_redaction_keeps_documentation_and_versions(self):
         text = '198.51.100.2 2001:db8::5 127.0.0.1 kernel 7.2.9 time 12:30:45'
         self.assertEqual(hw.redact(text), text)

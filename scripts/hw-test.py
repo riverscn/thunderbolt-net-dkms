@@ -63,7 +63,8 @@ def redact(text, extra=()):
     """Replace addresses, identifiers and user-supplied terms with labels."""
     for term, label in extra:
         if term:
-            text = text.replace(term, label)
+            # Whole names only: hostname "pve" must not rewrite "7.0.14-23-pve".
+            text = re.sub(r'(?<![\w.-])' + re.escape(term) + r'(?![\w-])', label, text)
     text = _UUID.sub('<uuid>', text)
     text = _MAC.sub('<mac>', text)
     text = _IPV6.sub(lambda m: m.group() if _keep_ip(m.group()) else '<ipv6>', text)

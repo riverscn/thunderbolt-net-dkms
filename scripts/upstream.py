@@ -111,9 +111,10 @@ def validate_mail(sha, data):
 
 
 def git(directory, *args, **kwargs):
+    # Blob-less clones fetch objects on demand; allow for a slow network.
     return subprocess.run(['git', '-c', 'user.name=Thunderbolt net import',
                           '-c', 'user.email=import@example.org', *args],
-                         cwd=directory, check=True, timeout=30, **kwargs)
+                         cwd=directory, check=True, timeout=600, **kwargs)
 
 
 def import_mail(directory, sha, data):
