@@ -19,6 +19,7 @@ static bool mtu_probe;
 static unsigned int mtu_cap = 1500;
 static unsigned int route_limit, probe_payload = 20001;
 static unsigned int feedback_count, feedback_mtu, feedback_quote_ok;
+static unsigned int feedback_stride, feedback_payload;
 module_param(mtu_probe, bool, 0600);
 module_param(mtu_cap, uint, 0600);
 /* route_limit labels the route configured by the guest script; not a policy. */
@@ -67,6 +68,15 @@ static netdev_tx_t sink_xmit(struct sk_buff *skb, struct net_device *dev)
 	return NETDEV_TX_OK;
 }
 
+/* Errors can quote the aggregate or any software-generated segment. */
+static bool feedback_sequence_ok(__be32 seq)
+{
+	u32 offset = ntohl(seq) - 0xfffff000U;
+
+	return offset < feedback_payload && feedback_stride &&
+	       !(offset % feedback_stride);
+}
+
 static netdev_tx_t input_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	unsigned int off = skb_network_offset(skb), mtu = 0;
@@ -88,7 +98,7 @@ static netdev_tx_t input_xmit(struct sk_buff *skb, struct net_device *dev)
 			    !skb_copy_bits(skb, off + quoted.ihl * 4,
 					   ports_seq, sizeof(ports_seq)))
 				quote_ok = ntohl(ports_seq[0]) == (54321U << 16 | 5001) &&
-					   ntohl(ports_seq[1]) == 0xfffff000U;
+					   feedback_sequence_ok(ports_seq[1]);
 		}
 	} else if (skb->protocol == htons(ETH_P_IPV6)) {
 		struct ipv6hdr ip, quoted;
@@ -105,7 +115,7 @@ static netdev_tx_t input_xmit(struct sk_buff *skb, struct net_device *dev)
 			    !skb_copy_bits(skb, off + sizeof(quoted),
 					   ports_seq, sizeof(ports_seq)))
 				quote_ok = ntohl(ports_seq[0]) == (54321U << 16 | 5001) &&
-					   ntohl(ports_seq[1]) == 0xfffff000U;
+					   feedback_sequence_ok(ports_seq[1]);
 		}
 	}
 	spin_lock_bh(&capture_lock);
@@ -155,6 +165,8 @@ static int run_path(const char *value, const struct kernel_param *kp)
 	captured = NULL;
 	captured_tail = &captured;
 	feedback_count = feedback_mtu = feedback_quote_ok = 0;
+	feedback_payload = f.payload;
+	feedback_stride = f.mtu - (f.v6 ? 60 : 40);
 	capturing = true;
 	spin_unlock_bh(&capture_lock);
 	local_bh_disable();
