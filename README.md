@@ -31,7 +31,7 @@ This is an independent project, not an upstream Linux, Apple, Intel, Ubuntu,
 Debian, or Proxmox release. It is not a general fix for cable enumeration,
 runtime power management, DHCP, or every TSO interoperability problem.
 
-## Version 0.3.0 (unreleased)
+## Version 0.3.0
 
 This iteration rebases the driver on Linux 7.2.9 and keeps the existing RX
 changes: oversized-TCP normalization, optional page recycling, RX lifecycle
