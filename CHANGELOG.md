@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.0 — unreleased
+## 0.3.0 — experimental
 
 - Rebase the driver on Linux 7.2.9. Upstream imports keep their original
   authorship; they include TX end-to-end flow-control removal, complete-packet

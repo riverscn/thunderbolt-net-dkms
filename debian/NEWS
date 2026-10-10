@@ -12,4 +12,4 @@ thunderbolt-net (0.3.0-1) unstable; urgency=medium
   /etc/modprobe.d/thunderbolt-net-rx.conf and thunderbolt-net-page-pool.conf
   set the same values and can be removed.
 
- -- Shun Li <riverscn@gmail.com>  Sat, 10 Oct 2026 13:00:00 +0000
+ -- Shun Li <riverscn@gmail.com>  Sat, 10 Oct 2026 14:25:29 +0000
