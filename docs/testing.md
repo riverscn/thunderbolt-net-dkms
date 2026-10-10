@@ -52,6 +52,13 @@ Assertions cover:
 The ordering test emulates network-device header settings; it does not execute
 physical Thunderbolt probe or DMA. Test modules are excluded from DKMS installs.
 
+After the Debian package is installed, `qemu-test.py --kernel ... --installed`
+asks modprobe how it would load `thunderbolt_net`, requires the DKMS module and
+exactly the options from `packaging/thunderbolt-net.conf`, runs those `insmod`
+commands in the guest and checks `/sys/module/thunderbolt_net/parameters/`.
+`ci-linux.sh` runs it on every distribution in the matrix, so the packaged
+defaults are tested end to end, not only as a file in the package.
+
 ## RX lifecycle tests
 
 [tests/rx-lifecycle](../tests/rx-lifecycle/README.md) extracts ten production
