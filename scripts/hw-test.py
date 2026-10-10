@@ -325,7 +325,9 @@ def cmd_reload(args):
         params.append(p)
     log = KernelLog()
     print(f'unloading {MODULE} ...', flush=True)
-    subprocess.run(['modprobe', '-r', MODULE], check=True, timeout=60)
+    # rmmod, not modprobe -r: the latter also unloads the unused Thunderbolt
+    # core, dropping the USB4 link until the cable is replugged.
+    subprocess.run(['rmmod', MODULE], check=True, timeout=60)
     print(f"loading {MODULE} {' '.join(params)}", flush=True)
     subprocess.run(['modprobe', MODULE] + params, check=True, timeout=60)
     deadline = time.monotonic() + args.timeout

@@ -54,6 +54,19 @@ class ReleaseTests(unittest.TestCase):
         self.assertNotIn('.conf.example', text)
         self.assertNotIn('riverscn/thunderbolt-net-dkms', text)
 
+    def test_reload_instructions_keep_the_thunderbolt_core(self):
+        # modprobe -r also unloads the unused core module and drops the link.
+        spec = importlib.util.spec_from_file_location('notes', ROOT / 'scripts/release-notes.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        texts = {'release notes': module.render('example/thunderbolt-net-dkms'),
+                 'hw-test.py': (ROOT / 'scripts/hw-test.py').read_text()}
+        for path in [*ROOT.glob('*.md'), *(ROOT / 'docs').glob('*.md')]:
+            texts[path.name] = path.read_text()
+        for name, text in texts.items():
+            self.assertNotIn('modprobe -r thunderbolt_net', text, name)
+            self.assertNotIn("['modprobe', '-r'", text, name)
+
     def test_release_version_is_consistent_after_version_bump(self):
         spec = importlib.util.spec_from_file_location('notes', ROOT / 'scripts/release-notes.py')
         module = importlib.util.module_from_spec(spec)

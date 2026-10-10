@@ -125,15 +125,16 @@ changes are active even when page recycling is disabled; see the
 management connection; this interrupts Thunderbolt networking:
 
 ```sh
-sudo modprobe -r thunderbolt_net && sudo modprobe thunderbolt_net
+sudo rmmod thunderbolt_net && sudo modprobe thunderbolt_net
 cat /sys/module/thunderbolt_net/version
 cat /sys/module/thunderbolt_net/parameters/rx_segment
 cat /sys/module/thunderbolt_net/parameters/rx_page_pool
 ```
 
-Expect version `{version}` and `Y` for both parameters with the defaults. A reboot can be
-used instead of a reload. If the module is in an initramfs, refresh that image
-first. Secure Boot may require enrolling the local DKMS signing key.
+Expect version `{version}` and `Y` for both parameters with the defaults. Use
+`rmmod`, not `modprobe -r`, which also unloads the Thunderbolt core and drops the
+link until the cable is replugged. A reboot can be used instead of a reload. If
+the module is in an initramfs, refresh that image first. Secure Boot may require enrolling the local DKMS signing key.
 See the **[full installation and rollback guide]({docs}/installation.md)**.
 
 **6. Rollback choices.** To disable only page recycling, set `rx_page_pool=0` in
