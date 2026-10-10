@@ -134,7 +134,8 @@ cat /sys/module/thunderbolt_net/parameters/rx_page_pool
 Expect version `{version}` and `Y` for both parameters with the defaults. Use
 `rmmod`, not `modprobe -r`, which also unloads the Thunderbolt core and drops the
 link until the cable is replugged. A reboot can be used instead of a reload. If
-the module is in an initramfs, refresh that image first. Secure Boot may require enrolling the local DKMS signing key.
+the module is in an initramfs, refresh that image first. Secure Boot may require
+enrolling the local DKMS signing key.
 See the **[full installation and rollback guide]({docs}/installation.md)**.
 
 **6. Rollback choices.** To disable only page recycling, set `rx_page_pool=0` in
