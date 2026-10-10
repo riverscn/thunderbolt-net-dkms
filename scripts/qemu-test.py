@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-2.0-only
 """Run kernel tests inside a disposable, diskless QEMU with no external NIC."""
 import argparse
+import json
 import gzip
 import lzma
 import os
@@ -107,6 +108,23 @@ $B rmmod thunderbolt_net
 $B insmod /tbnet_path_test.ko
 '''
         init += f'IP={ip}\n'
+        init += """mtu_matrix() {
+ echo Y > /sys/module/tbnet_path_test/parameters/mtu_probe
+ for row in 1500:1500:0 9000:9000:0 9000:1500:0 9000:1500:1500 1280:1280:0 1500:1500:0; do
+  ingress=${row%%:*}
+  rest=${row#*:}
+  egress=${rest%%:*}
+  cap=${rest#*:}
+  $IP link set tbtest0 mtu "$ingress"
+  $IP link set tbsink0 mtu "$egress"
+  echo "$cap" > /sys/module/tbnet_path_test/parameters/mtu_cap
+  for n in 2 4 6 8; do
+   echo "$n" > /sys/module/tbnet_path_test/parameters/trigger
+  done
+ done
+ echo N > /sys/module/tbnet_path_test/parameters/mtu_probe
+}
+"""
         init += '''$IP link set lo up
 $IP link set tbtest0 addrgenmode none
 $IP link set tbsink0 addrgenmode none
@@ -121,6 +139,7 @@ $B sleep 1
 for n in 1 2 3 4 5 6 7 8; do
  echo "$n" > /sys/module/tbnet_path_test/parameters/trigger
 done
+mtu_matrix
 $IP link set tbtest0 nomaster
 $IP link set tbsink0 nomaster
 $IP link del brtest
@@ -137,6 +156,7 @@ echo 1 > /proc/sys/net/ipv6/conf/all/forwarding
 for n in 1 2 3 4 5 6 7 8; do
  echo "$n" > /sys/module/tbnet_path_test/parameters/trigger
 done
+mtu_matrix
 '''
         init += '''for legacy in 0 1; do
  $B insmod /tbnet_order_test.ko legacy_header=$legacy
@@ -167,6 +187,21 @@ done
         assert 'TBNET_TEST SUMMARY tests=39 failures=0' in text, text[-6000:]
         assert len(re.findall(r'TBNET_PATH PASS ', text)) == 16, text[-6000:]
         assert not re.search(r'TBNET_PATH FAIL|BUG:|WARNING:|UBSAN:|Oops:|Call Trace:', text), text[-6000:]
+        mtu_lines = re.findall(r'^.*TBNET_MTU (.*)$', text, re.MULTILINE)
+        assert len(mtu_lines) == 48, (len(mtu_lines), text[-8000:])
+        observations = [dict(field.split('=') for field in line.split())
+                        for line in mtu_lines]
+        for row in observations:
+            if int(row['effective']) <= int(row['egress']):
+                assert row['valid'] == '1' and row['oversized'] == '0', row
+            else:
+                # Record the failure mode; never count oversized output as
+                # successful forwarding merely because the sink accepted it.
+                assert row['received'] == '0' or row['valid'] == '1', row
+        (build / ('mtu-' + kernel + '.json')).write_text(
+            json.dumps(observations, indent=2) + '\n')
+        for row in observations:
+            print('MTU observation:', row)
         summaries = re.findall(
             r'TBNET_ORDER SUMMARY cases=(\d+) reordered=(\d+) errors=(\d+) '
             r'header=(\d+) headroom=(\d+)', text)
@@ -179,7 +214,7 @@ done
         assert legacy[2:] == (0, 26, 0), legacy
         assert 'TBNET_ORDER ERROR' not in text, text[-6000:]
         print(f'GRO ordering: 256 corrected cases passed; legacy control reordered {legacy[1]}/256')
-        print('QEMU passed: 39 unit tests, 16 bridge/router cases, GRO ordering, driver load/unload')
+        print('QEMU passed: 39 unit tests, 16 bridge/router cases, 48 MTU observations, GRO ordering, driver load/unload')
 
 if __name__ == '__main__':
     main()

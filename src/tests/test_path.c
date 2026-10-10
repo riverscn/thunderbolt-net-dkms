@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /* Hardware-free integration: inject a wire-shaped aggregate into a real
- * Linux bridge or IP forwarding path and capture at a 1500-MTU egress.
+ * Linux bridge or IP forwarding path and capture at a configurable software egress.
  * Never load this test module outside the disposable QEMU guest.
  */
 #define TBNET_NETWORK_TEST
@@ -13,6 +13,10 @@ static DEFINE_SPINLOCK(capture_lock);
 static struct sk_buff *captured, **captured_tail;
 static bool capturing;
 static int trigger;
+static bool mtu_probe;
+static unsigned int mtu_cap = 1500;
+module_param(mtu_probe, bool, 0600);
+module_param(mtu_cap, uint, 0600);
 static struct napi_struct test_napi;
 static struct sk_buff_head rx_queue;
 
@@ -69,17 +73,22 @@ static int run_path(const char *value, const struct kernel_param *kp)
 {
 	struct fixture f = { .payload = 20001, .mtu = 1500, .nonlinear = true };
 	struct sk_buff *skb, *next, *list;
-	unsigned int packets = 0;
+	unsigned int packets = 0, max_ip_len = 0, oversized = 0;
+	unsigned int ingress, egress;
 	bool fix, ok, gro;
 	int v, err = kstrtoint(value, 0, &v);
 
-	if (err || v < 1 || v > 8 || !testdev)
+	if (err || v < 1 || v > 8 || !testdev || !sink)
 		return -EINVAL;
+	ingress = READ_ONCE(testdev->mtu);
+	egress = READ_ONCE(sink->mtu);
 	gro = v > 4;
 	if (gro)
 		v -= 4;
 	fix = !(v & 1);
 	f.v6 = v > 2;
+	if (mtu_probe)
+		f.mtu = tbnet_rx_effective_mtu(testdev, mtu_cap);
 	skb = make_packet(&f);
 	if (!skb)
 		return -ENOMEM;
@@ -114,9 +123,26 @@ static int run_path(const char *value, const struct kernel_param *kp)
 	list = captured;
 	captured = NULL;
 	spin_unlock_bh(&capture_lock);
-	for (skb = list; skb; skb = skb->next)
+	for (skb = list; skb; skb = skb->next) {
+		unsigned int len = skb->len > ETH_HLEN ? skb->len - ETH_HLEN : 0;
+
 		packets++;
+		max_ip_len = max(max_ip_len, len);
+		oversized += len > egress;
+	}
 	ok = fix ? (list && validate(list, &f)) : !list;
+	if (mtu_probe) {
+		/* The software sink accepts oversized frames so they are visible.
+		 * Payload validity does not imply the output fits its declared MTU.
+		 */
+		pr_info("TBNET_MTU topology=%s ipv=%d gro=%d ingress=%u egress=%u cap=%u effective=%u received=%u max_ip_len=%u oversized=%u valid=%d\n",
+			netif_is_bridge_port(testdev) ? "bridge" : "route",
+			f.v6 ? 6 : 4, gro, ingress, egress, mtu_cap, f.mtu,
+			packets, max_ip_len, oversized, list && validate(list, &f));
+		kfree_skb_list(list);
+		trigger = v;
+		return 0;
+	}
 	pr_info("TBNET_PATH %s topology=%s ipv=%d normalize=%d gro=%d received=%u\n",
 		ok ? "PASS" : "FAIL", netif_is_bridge_port(testdev) ? "bridge" : "route",
 		f.v6 ? 6 : 4, fix, gro, packets);
@@ -149,6 +175,8 @@ static int __init path_init(void)
 	testdev->netdev_ops = &input_ops;
 	sink->netdev_ops = &sink_ops;
 	testdev->features |= NETIF_F_GRO;
+	testdev->min_mtu = sink->min_mtu = 68;
+	testdev->max_mtu = sink->max_mtu = 9000;
 	err = register_netdev(testdev);
 	if (err)
 		goto free;
