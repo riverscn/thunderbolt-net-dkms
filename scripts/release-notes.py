@@ -125,7 +125,10 @@ changes are active even when page recycling is disabled; see the
 management connection; this interrupts Thunderbolt networking:
 
 ```sh
+sudo systemctl stop ifup@thunderbolt0.service   # ifupdown hosts only
 sudo rmmod thunderbolt_net && sudo modprobe thunderbolt_net
+sudo udevadm settle
+sudo systemctl start ifup@thunderbolt0.service  # ifupdown hosts only
 cat /sys/module/thunderbolt_net/version
 cat /sys/module/thunderbolt_net/parameters/rx_segment
 cat /sys/module/thunderbolt_net/parameters/rx_page_pool
@@ -133,7 +136,10 @@ cat /sys/module/thunderbolt_net/parameters/rx_page_pool
 
 Expect version `{version}` and `Y` for both parameters with the defaults. Use
 `rmmod`, not `modprobe -r`, which also unloads the Thunderbolt core and drops the
-link until the cable is replugged. A reboot can be used instead of a reload. If
+link until the cable is replugged. On Debian/Proxmox hosts that bring the port
+up with ifupdown hotplug (`allow-hotplug`), the `systemctl` lines avoid a race
+that leaves the new interface `DOWN` and outside its bridge; omit them
+otherwise. A reboot can be used instead of a reload. If
 the module is in an initramfs, refresh that image first. Secure Boot may require
 enrolling the local DKMS signing key.
 See the **[full installation and rollback guide]({docs}/installation.md)**.

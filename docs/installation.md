@@ -121,8 +121,11 @@ To activate the configuration, reload from a local console or a separate
 management connection, or reboot:
 
 ```sh
+sudo systemctl stop ifup@thunderbolt0.service   # ifupdown hosts only, see below
 sudo rmmod thunderbolt_net
 sudo modprobe thunderbolt_net
+sudo udevadm settle
+sudo systemctl start ifup@thunderbolt0.service  # ifupdown hosts only
 cat /sys/module/thunderbolt_net/version
 cat /sys/module/thunderbolt_net/parameters/rx_segment
 cat /sys/module/thunderbolt_net/parameters/rx_segment_mtu
@@ -138,6 +141,16 @@ unloads the Thunderbolt core module `thunderbolt` once nothing else uses it.
 That drops the USB4 link, and the peer may not reconnect until the cable is
 replugged. `rmmod` unloads only the network driver, so the link stays up and
 carrier normally returns within a few seconds after `modprobe`.
+
+The two `systemctl` lines apply to Debian and Proxmox hosts whose
+`/etc/network/interfaces` brings the port up through ifupdown hotplug
+(`allow-hotplug thunderbolt0`). Removing the driver starts stopping
+`ifup@thunderbolt0.service`; if the new interface appears before that stop
+finishes, its hotplug `ifup` does not run, and the interface stays `DOWN` and
+outside its bridge. Stopping the unit first and starting it after the new
+interface exists avoids the race; if it already happened, the `start` line
+alone recovers. Use your interface name, and omit both lines with systemd-networkd,
+NetworkManager or no automatic configuration.
 
 An unload failure must be investigated; never force-remove a busy module.
 Reloading interrupts Thunderbolt networking, and peer negotiation may take
