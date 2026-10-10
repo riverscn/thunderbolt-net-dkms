@@ -7,16 +7,20 @@ workaround and the 0.1.1 GRO header correction. It adds optional RX page
 recycling, lifecycle serialization and three attributed connection cleanup
 backports. See [design](rx-page-pool.md) and [compatibility](compatibility.md).
 
-## Next iteration
+## Current development branch
 
-- Select and pin a newer stable upstream driver revision; record its source
-  URLs and hashes. Review dependencies on Thunderbolt core before importing it.
-- Add a focused compatibility layer for selected older kernels. Distribution
-  backports make version numbers alone insufficient evidence of API support.
-- Validate Linux 7.2 and then assess Arch packaging. Neither is supported by
-  the current build gate.
-- Expand hardware coverage to more controllers, suspend/resume and longer
-  workloads. Track enumeration failures separately from packet processing.
+`feature/upstream-tracking` selects Linux 7.2.9 and adds a reproducible update
+procedure, older-kernel compatibility and pinned upstream-kernel testing.
+See [upstream maintenance](upstream-tracking.md).
+
+## Before the next release
+
+- Complete the new baseline's hardware regression: bidirectional throughput,
+  payload integrity and connection recovery. Existing v0.2.0 results do not
+  validate the new upstream behavior.
+- Assess Arch packaging and matching distribution kernels independently.
+- Review mainline RC changes as early warnings; do not widen support gates
+  without builds and tests.
 
 Keep RX normalization separate from upstream-derived code. Never replace a
 missing kernel dependency with a no-op merely to make a build pass. DKMS

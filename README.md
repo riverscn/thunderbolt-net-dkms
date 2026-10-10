@@ -11,7 +11,15 @@ This is an independent project, not an upstream Linux, Apple, Intel, Ubuntu,
 Debian, or Proxmox release. It is not a general fix for cable enumeration,
 runtime power management, DHCP, or every TSO interoperability problem.
 
-## Version 0.2.0
+## Development: upstream tracking
+
+This branch rebases the driver on Linux 7.2.9, preserves the existing RX fixes,
+and adds reproducible upstream updates and a pinned stable-kernel CI gate.
+See [upstream maintenance](docs/upstream-tracking.md) for the workflow and
+[compatibility](docs/compatibility.md) for validation limits. It does not include
+the automatic-MTU experiment and has not been released.
+
+## Published version 0.2.0
 
 This iteration adds opt-in RX page recycling, serializes RX startup/teardown,
 and backports three upstream connection-cleanup fixes. It retains the 0.1.1
@@ -25,12 +33,12 @@ GRO ordering correction and conservative oversized-TCP normalization.
   [validation report](docs/validation.md) for measured results and coverage.
 
 An initial physical reconnect timed out; a manual retry restored the link and
-bidirectional transfer. Repeatability remains open and the PR stays draft.
+bidirectional transfer. Repeatability remains open.
 See the validation report for both observations.
 
 The package remains experimental. Use an independent management path when
 reloading; [rollback](docs/installation.md#return-to-the-011-baseline) is to
-0.1.1. No stable release is declared by this PR.
+0.1.1. Version 0.2.0 is a prerelease.
 
 ## Install and enable
 
