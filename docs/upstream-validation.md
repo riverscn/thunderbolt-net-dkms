@@ -116,3 +116,61 @@ packets are no longer counted as delivered) and a warning was added when ring
 throttling cannot be configured. These change statistics and logging only, not
 the data path; both builds were compile-checked on Linux 7.0 and 7.2.9 and the
 RX lifecycle model reruns in CI, but the hardware runs above predate them.
+
+## Upload ceiling: Mac to Linux
+
+Upload (macOS to Linux) stays at about 24.5 Gbit/s while download reaches
+28–30 Gbit/s on this pairing. These experiments, on 2026-10-10/11 with the
+same host and peer, looked for the limit on the Linux side. Per-run data is in
+[upstream-iperf3-results.csv](upstream-iperf3-results.csv) under the
+`ring-size-*` and `dma-credits-*` phases.
+
+Ruled out on the Linux side, each varied with everything else at default:
+
+| Variable | Result for upload |
+| --- | --- |
+| RX/TX ring size 128, 256, 512, 1024 | 24.4–24.6 in every case; 64 gave 22.9–23.5 (download fell to 11.5) |
+| RX buffer refill batch 1, 4, 17, 64 | unchanged |
+| Ring interrupt moderation 0 µs vs 128 µs (Linux 7.2.9) | unchanged (24.3 vs 24.6) |
+| Receive CPU | the softirq core was 44% busy; 1 and 4 TCP streams gave the same rate with 0 retransmissions |
+| Link | 2 lanes × 20 Gb/s in both directions; no errors, drops or bad checksums |
+| XDomain `prtcstns` without the 64K-frames bit | unchanged; macOS kept sending 64 KiB aggregates |
+
+On the Mac, no CPU core exceeded 57% during upload (62% during download), so the
+peer is not CPU-bound either. Its Thunderbolt objects expose no data-path
+counters or per-path credits.
+
+**Link-level DMA credits.** The Thunderbolt core gives the DMA path from the
+peer `dma_credits` (default 14) buffer credits at the Linux ingress port. On
+this Intel Raptor Lake-P router the stock parameter cannot exceed 14: the core
+takes the minimum with the router-reported `max_dma_credits`, which is 14, so
+`modprobe thunderbolt dma_credits=32` still programs 14 (debugfs `port1/path`
+confirmed). A core built in the 7.2.9 VM with that minimum removed and the
+parameter made writable gave, with the net driver reloaded for each value:
+
+| Credits at the Linux ingress hop | Upload, Gbit/s | Download, Gbit/s |
+| ---: | ---: | ---: |
+| 7 | 14.46 | 28.7–28.9 |
+| 10 | 20.59 | 28.2–28.5 |
+| 12 | 24.54 | 27.9–28.7 |
+| 14 (default) | 24.56 | 28.0–28.5 |
+| 16, 20, 24, 32 | 24.4–24.6 | 25.4–29.3 |
+| 64, 100 | link unusable | — |
+
+Below 12 credits upload is credit-bound at about 2.06 Gbit/s per credit, which
+corresponds to a credit round trip of about 1 µs. From 12 upward it is flat at
+24.55 Gbit/s, so the default already sits above the knee and the ceiling is set
+elsewhere. Values of 64 and 100 broke the link: ping round trips rose to about
+125 ms, RX errors appeared, and returning to 14 did not help until the core was
+unloaded and re-probed. Do not raise `dma_credits` above the router's reported
+maximum; on this router the parameter has no useful effect at all.
+
+**Conclusion.** The upload ceiling is not set by the Linux receive path, by its
+E2E or link-level credits, or by TCP. It lies in the macOS transmit path or in
+the interaction between the Mac and this Intel host interface. Deciding between
+those needs a different peer for the Mac (a second Mac, or a bare-metal USB4
+Linux or Windows machine). A Windows VM with the controller passed through
+cannot serve: Windows attaches its USB4 connection manager only to host routers
+that firmware describes through ACPI `_OSC` (hardware ID `PCI\USB4_MS_CM`) or
+`ACPI\ACPI0015`, and a passed-through device has neither.
+
