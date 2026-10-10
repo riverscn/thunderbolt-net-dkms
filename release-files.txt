@@ -60,6 +60,7 @@ src/tests/test_rx.c
 src/tests/test_tcp_link.c
 src/trace.c
 src/trace.h
+tests/forwarding/linux-7.0-rx-gso-mtu.patch
 tests/rx-lifecycle/Makefile
 tests/rx-lifecycle/README.md
 tests/rx-lifecycle/build-kernels.py

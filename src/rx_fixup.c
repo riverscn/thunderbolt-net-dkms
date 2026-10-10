@@ -164,6 +164,12 @@ struct sk_buff *tbnet_rx_fixup(struct sk_buff *skb, unsigned int mtu)
 	skb_set_network_header(skb, nhoff);
 	skb_set_transport_header(skb, nhoff + iphlen);
 	skb->protocol = ((struct ethhdr *)skb->data)->h_proto;
+#ifdef SKB_RX_GSO_MTU_SUPPORTED
+	/* Only the isolated experimental core patch understands this contract.
+	 * Stock kernels retain the existing explicit-bound behavior.
+	 */
+	skb_shinfo(skb)->flags |= SKBFL_RX_GSO_MTU;
+#endif
 	skb_shinfo(skb)->gso_size = mss;
 	skb_shinfo(skb)->gso_type = gso_type | SKB_GSO_DODGY;
 	skb_shinfo(skb)->gso_segs = DIV_ROUND_UP(tcplen - thlen, mss);
