@@ -100,8 +100,9 @@ test "$($B cat /sys/module/thunderbolt_net/parameters/rx_segment)" = Y
 test -r /sys/module/thunderbolt_net/version
 test "$($B cat /sys/module/thunderbolt_net/parameters/rx_page_pool)" = N
 $B rmmod thunderbolt_net
-$B insmod /thunderbolt_net.ko rx_segment=1 rx_page_pool=1
+$B insmod /thunderbolt_net.ko rx_segment=1 rx_page_pool=1 rx_segment_mtu=0
 test "$($B cat /sys/module/thunderbolt_net/parameters/rx_page_pool)" = Y
+test "$($B cat /sys/module/thunderbolt_net/parameters/rx_segment_mtu)" = 0
 $B rmmod thunderbolt_net
 $B insmod /tbnet_path_test.ko
 '''
@@ -163,7 +164,7 @@ done
         (build / ('qemu-' + kernel + '.log')).write_text(result.stdout + result.stderr)
         assert 'TBNET_VM_EXIT=0' in result.stdout, result.stdout[-6000:]
         text = result.stdout.split('TBNET_LOG_BEGIN', 1)[1].split('TBNET_LOG_END', 1)[0]
-        assert 'TBNET_TEST SUMMARY tests=27 failures=0' in text, text[-6000:]
+        assert 'TBNET_TEST SUMMARY tests=39 failures=0' in text, text[-6000:]
         assert len(re.findall(r'TBNET_PATH PASS ', text)) == 16, text[-6000:]
         assert not re.search(r'TBNET_PATH FAIL|BUG:|WARNING:|UBSAN:|Oops:|Call Trace:', text), text[-6000:]
         summaries = re.findall(
@@ -178,7 +179,7 @@ done
         assert legacy[2:] == (0, 26, 0), legacy
         assert 'TBNET_ORDER ERROR' not in text, text[-6000:]
         print(f'GRO ordering: 256 corrected cases passed; legacy control reordered {legacy[1]}/256')
-        print('QEMU passed: 27 unit tests, 16 bridge/router cases, GRO ordering, driver load/unload')
+        print('QEMU passed: 39 unit tests, 16 bridge/router cases, GRO ordering, driver load/unload')
 
 if __name__ == '__main__':
     main()

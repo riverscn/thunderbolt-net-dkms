@@ -244,7 +244,7 @@ MODULE_PARM_DESC(rx_segment, "Experimental verified RX TCP GSO metadata (default
 
 static unsigned int tbnet_rx_segment_mtu = 1500;
 module_param_named(rx_segment_mtu, tbnet_rx_segment_mtu, uint, 0444);
-MODULE_PARM_DESC(rx_segment_mtu, "RX segmentation IP size cap (68..65522, default: 1500)");
+MODULE_PARM_DESC(rx_segment_mtu, "RX segmentation IP size cap (0: interface MTU, 68..65522; default: 1500)");
 
 static bool tbnet_e2e = true;
 module_param_named(e2e, tbnet_e2e, bool, 0444);
@@ -1026,8 +1026,8 @@ static int tbnet_poll(struct napi_struct *napi, int budget)
 			if (tbnet_rx_segment) {
 				skb->dev = net->dev;
 				skb = tbnet_rx_fixup(skb,
-					min_t(unsigned int, net->dev->mtu,
-					      tbnet_rx_segment_mtu));
+					tbnet_rx_effective_mtu(net->dev,
+					       tbnet_rx_segment_mtu));
 				if (IS_ERR(skb)) {
 					net->stats.rx_errors++;
 					if (PTR_ERR(skb) == -EBADMSG)
@@ -1673,7 +1673,8 @@ static int __init tbnet_init(void)
 	unsigned int flags;
 	int ret;
 
-	if (tbnet_rx_segment_mtu < 68 || tbnet_rx_segment_mtu > 65522)
+	if (tbnet_rx_segment_mtu &&
+	    (tbnet_rx_segment_mtu < 68 || tbnet_rx_segment_mtu > 65522))
 		return -EINVAL;
 
 	tbnet_dir = tb_property_create_dir(&tbnet_dir_uuid);

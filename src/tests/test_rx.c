@@ -53,6 +53,8 @@ struct fixture {
 	bool v6, nonlinear, cloned, timestamp;
 	u8 tags;
 	unsigned int payload, mtu;
+	bool select_mtu;
+	unsigned int mtu_cap;
 	int mutation;
 };
 
@@ -256,7 +258,8 @@ static void __maybe_unused run_case(const char *name, struct fixture f, int expe
 	/* skb_checksum covers payload and headers for bypass identity checking. */
 	before = (__force u32)skb_checksum(skb, 0, skb->len, 0);
 	local_bh_disable();
-	segs = tbnet_rx_fixup(skb, f.mtu);
+	segs = tbnet_rx_fixup(skb, f.select_mtu ?
+		tbnet_rx_effective_mtu(testdev, f.mtu_cap) : f.mtu);
 	local_bh_enable();
 	if (expected < 0) {
 		ok = IS_ERR(segs) && PTR_ERR(segs) == expected;
@@ -342,6 +345,29 @@ static int __init test_init(void)
 	f.v6 = true;
 	f.mutation = 1;
 	run_case("IPv6 bad checksum rejected", f, -EBADMSG);
+	/* Change one device's MTU between packets without recreating the device.
+	 * Validate resulting wire segment lengths, checksums and payload, not
+	 * just the MTU selection arithmetic.
+	 */
+	for (n = 0; n < 2; n++) {
+		static const unsigned int mtus[] = { 1500, 9000, 1280, 1500 };
+		unsigned int i;
+
+		f = (struct fixture) { .payload = 20001, .nonlinear = true,
+			.v6 = n, .select_mtu = true, .mtu_cap = 0 };
+		for (i = 0; i < ARRAY_SIZE(mtus); i++) {
+			WRITE_ONCE(testdev->mtu, mtus[i]);
+			f.mtu = mtus[i];
+			run_case("auto MTU follows successive interface changes", f, 1);
+		}
+		f.mtu_cap = 1500;
+		WRITE_ONCE(testdev->mtu, 9000);
+		f.mtu = 1500;
+		run_case("explicit cap limits jumbo ingress", f, 1);
+		WRITE_ONCE(testdev->mtu, 1280);
+		f.mtu = 1280;
+		run_case("explicit cap respects smaller ingress", f, 1);
+	}
 	free_netdev(testdev);
 	pr_info("TBNET_TEST SUMMARY tests=%u failures=%u\n", tests, failures);
 	return failures ? -EINVAL : 0;
