@@ -1,6 +1,22 @@
 # Changelog
 
-## 0.2.0 — unreleased
+## 0.3.0 — unreleased
+
+- Rebase the driver on Linux 7.2.9. Upstream imports keep their original
+  authorship; they include TX end-to-end flow-control removal, complete-packet
+  RX statistics, the fragment-count bound and service-driver ring throttling.
+- Request the previous 128-microsecond interrupt throttling through
+  `tb_ring_throttling()` when the target kernel provides it; older cores keep
+  their own moderation. Use the core frame-size helper when available.
+- Retain oversized TCP RX normalization, RX page recycling, lifecycle
+  serialization and the GRO header-length correction unchanged in behavior.
+- Allow Linux 6.8–6.19 and 7.0–7.2 in the DKMS build gate. Add checksum-pinned
+  upstream-kernel CI and assert the throttling path of every built module.
+- Add a manual hardware test helper and record regression results: throughput
+  matched 0.2.0 on Linux 7.0, and on Linux 7.2.9 the throttling call avoided an
+  11–44× increase in interrupts. See `docs/upstream-validation.md`.
+
+## 0.2.0 — experimental
 
 - Add opt-in DMA-mapped RX page recycling (`rx_page_pool=1`), disabled by
   default and independent of oversized TCP normalization (`rx_segment`).

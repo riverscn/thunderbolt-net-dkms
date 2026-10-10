@@ -68,9 +68,47 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  upstream-status:
+    # Discovery is advisory; release builds always use the reviewed lock file.
+    continue-on-error: true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Compare pinned baseline with kernel.org stable
+        run: |
+          python3 scripts/upstream.py status --output build/upstream-status.json
+          cat build/upstream-status.json >> "$GITHUB_STEP_SUMMARY"
+
+  upstream-kernel:
+    needs: source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    container:
+      image: ubuntu:24.04
+      options: --cpus=2 --memory=3g --pids-limit=512
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build pinned upstream stable and test DKMS in isolation
+        run: bash scripts/ci-upstream.sh
+      - name: Save upstream kernel diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: upstream-kernel-${{ github.sha }}
+          path: |
+            build/upstream-kernel/*
+            build/qemu-*.log
+          if-no-files-found: warn
+          retention-days: 14
+
   release:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    needs: [source, linux]
+    needs: [source, linux, upstream-kernel]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:

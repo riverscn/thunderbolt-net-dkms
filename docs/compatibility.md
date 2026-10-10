@@ -3,9 +3,10 @@
 Build, software-path tests, and hardware interoperability are separate claims.
 A successful compile does not establish cable, firmware or macOS compatibility.
 
-The 0.2.0 driver uses the Linux v7.0 source baseline with three connection
-cleanup backports. [Current validation](validation.md) distinguishes hardware
-results from builds and guest-only tests.
+Version 0.3.0 uses the Linux v7.2.9 driver sources; the published 0.2.0 used
+the v7.0 baseline with three connection-cleanup backports. The
+[current validation](upstream-validation.md) distinguishes hardware results
+from builds and guest-only tests.
 
 | Target | Validation path |
 | --- | --- |
@@ -13,9 +14,12 @@ results from builds and guest-only tests.
 | Debian 13 | CI build, QEMU and DKMS lifecycle |
 | Ubuntu 26.04 | CI build, QEMU, RX lifecycle model and DKMS lifecycle |
 | Proxmox 7.0.14-23-pve | Manual hardware validation with a macOS peer |
-| Linux 7.2 / current Arch kernel | Not supported by the current build gate |
+| Upstream Linux 7.2.9 | Pinned source build, QEMU, DKMS lifecycle and throttling-path CI |
+| Proxmox 7.0.14-23-pve | Manual hardware regression against v0.2.0 (older-core fallback) |
+| Arch Linux 7.2.9-arch1-1 | Manual build and passed-through controller test (new-core API path) |
+| Current Arch packages / mainline RC | Not validated as distribution packages |
 
-The initial build gate is x86-64, Linux 6.8–6.19 or 7.0. This is an allowed
+The build gate permits x86-64 Linux 6.8–6.19 or 7.0–7.2. This is an allowed
 development range, not a promise that every intermediate/vendor kernel works.
 Exact versions selected by distribution repositories are printed by CI. Future
 ABI changes require review; unsupported versions are skipped by DKMS autoinstall
@@ -31,6 +35,14 @@ and packet edge cases; those are not substitutes for hardware validation.
 PCI passthrough controller wake-up and link negotiation remain outside the RX
 normalization change. No runtime-PM workaround is installed by this package.
 
-The next milestone targets a current stable driver baseline with explicit
-backward compatibility. Planned kernel families are not support guarantees;
-see the [upstream tracking policy and roadmap](roadmap.md).
+The baseline and reproducible update procedure are documented in
+[upstream maintenance](upstream-tracking.md). The [v0.2.0 report](validation.md)
+does not cover this newer baseline; its own results are in the
+[upstream validation](upstream-validation.md). New kernel build evidence does not
+carry hardware results forward automatically.
+
+No hardware performance improvement over v0.2.0 is claimed for the 7.2.9
+baseline. In particular, the new throttling API retains the old 128-microsecond
+interval; see [performance expectations and hardware regression](upstream-tracking.md#performance-expectations-and-validation).
+The Arch result comes from a VM with the controller passed through, not from a
+bare-metal Arch installation or an Arch package.

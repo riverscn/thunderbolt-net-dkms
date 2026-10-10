@@ -5,7 +5,7 @@
 2. Enable branch protection for `main` and require the source and all Linux CI
    jobs. Enable GitHub private vulnerability reporting if available.
 3. Keep `VERSION`, `dkms.conf`, and `debian/changelog` in sync. The current package
-   uses upstream version `0.2.0` and Debian revision `-1`.
+   uses upstream version `0.3.0` and Debian revision `-1`.
 4. Review `release-files.txt`; every tracked file must appear there. Run source
    checks and all container tests. Keep private audit deny-lists outside Git.
 5. Inspect the `.deb` with `dpkg-deb --contents` and the source archive with

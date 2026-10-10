@@ -1,3 +1,13 @@
+thunderbolt-net (0.3.0-1) unstable; urgency=medium
+
+  * Rebase the driver on Linux 7.2.9 with attributed upstream imports.
+  * Add older-kernel compatibility for the frame-size and throttling APIs.
+  * Add pinned upstream-kernel CI and a ring-throttling build-path check.
+  * Retain RX normalization, page recycling and lifecycle serialization.
+  * Document hardware regression on the older-core and new-core paths.
+
+ -- Shun Li <riverscn@gmail.com>  Sat, 10 Oct 2026 13:00:00 +0000
+
 thunderbolt-net (0.2.0-1) unstable; urgency=medium
 
   * Add RX page recycling and lifecycle fixes for version 0.2.0.

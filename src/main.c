@@ -28,10 +28,7 @@
 #include "trace.h"
 #include "rx_fixup.h"
 
-/* Older supported kernels lack this ethtool spelling. Speeds are in Mb/s. */
-#ifndef SPEED_80000
-#define SPEED_80000 80000
-#endif
+#include "compat.h"
 
 /* Protocol timeouts in ms */
 #define TBNET_LOGIN_DELAY	4500
@@ -41,11 +38,12 @@
 #define TBNET_RING_SIZE		256
 #define TBNET_LOGIN_RETRIES	60
 #define TBNET_LOGOUT_RETRIES	10
+#define TBNET_THROTTLING	128000
 #define TBNET_E2E		BIT(0)
 #define TBNET_MATCH_FRAGS_ID	BIT(1)
 #define TBNET_64K_FRAMES	BIT(2)
 #define TBNET_MAX_MTU		SZ_64K
-#define TBNET_FRAME_SIZE	SZ_4K
+#define TBNET_FRAME_SIZE	TB_MAX_FRAME_SIZE
 #define TBNET_MAX_PAYLOAD_SIZE	\
 	(TBNET_FRAME_SIZE - sizeof(struct thunderbolt_ip_frame_header))
 /* Rx packets need to hold space for skb_shared_info */
@@ -361,7 +359,11 @@ static void stop_login(struct tbnet *net)
 
 static inline unsigned int tbnet_frame_size(const struct tbnet_frame *tf)
 {
+#ifdef TBNET_HAVE_FRAME_SIZE
+	return tb_ring_frame_size(&tf->frame);
+#else
 	return tf->frame.size ? : TBNET_FRAME_SIZE;
+#endif
 }
 
 static void tbnet_free_buffers(struct tbnet_ring *ring)
@@ -489,8 +491,15 @@ static void tbnet_tear_down(struct tbnet *net, bool send_logout)
 				break;
 		}
 
-		/* Disable paths while the rings and their buffers can still drain
-		 * in-flight DMA. This reverses the order used during connection.
+		/* Tear the paths down before stopping the rings.  This mirrors
+		 * tbnet_connected_work(), which enables the paths last so the
+		 * Rx ring is primed before packets can arrive.  Stopping a
+		 * ring zeroes its descriptor base and tbnet_free_buffers()
+		 * unmaps and frees the frame buffers, leaving anything still
+		 * in flight with nowhere to drain to;
+		 * __tb_path_deactivate_hop() then waits for the hop's
+		 * 'pending' bit, which on some host routers never clears in
+		 * that state.
 		 */
 		ret = tb_xdomain_disable_paths(net->xd,
 					       net->local_transmit_path,
@@ -906,7 +915,11 @@ static bool tbnet_check_frame(struct tbnet *net, const struct tbnet_frame *tf,
 		return true;
 	}
 
-	/* Start of packet, validate the frame header */
+	/* Start of packet, validate the frame header. tbnet_poll() puts the
+	 * first frame in the skb linear area and every further frame in a page
+	 * fragment, so a packet may not span more than MAX_SKB_FRAGS + 1 frames
+	 * without overflowing skb_shinfo()->frags[].
+	 */
 	if (frame_count == 0 || frame_count > MAX_SKB_FRAGS + 1) {
 		net->stats.rx_length_errors++;
 		return false;
@@ -1017,7 +1030,6 @@ static int tbnet_poll(struct napi_struct *napi, int budget)
 		       le32_to_cpu(net->rx_hdr.frame_count) - 1;
 
 		rx_packets++;
-		net->stats.rx_bytes += frame_size;
 
 		if (last) {
 			struct sk_buff *next;
@@ -1041,6 +1053,11 @@ static int tbnet_poll(struct napi_struct *napi, int budget)
 					net->stats.rx_normalized_bytes += skb->len;
 				}
 			}
+			/* Count delivered packets, not ones rx_fixup dropped, before
+			 * pulling the Ethernet header.
+			 */
+			net->stats.rx_packets++;
+			net->stats.rx_bytes += skb->len;
 			while (skb) {
 				next = skb->next;
 				skb_mark_not_on_list(skb);
@@ -1051,8 +1068,6 @@ static int tbnet_poll(struct napi_struct *napi, int budget)
 			}
 		}
 	}
-
-	net->stats.rx_packets += rx_packets;
 
 	if (cleaned_count)
 		tbnet_alloc_rx_buffers(net, cleaned_count);
@@ -1087,12 +1102,8 @@ static int tbnet_open(struct net_device *dev)
 
 	netif_carrier_off(dev);
 
-	flags = RING_FLAG_FRAME;
-	/* Only enable full E2E if the other end supports it too */
-	if (tbnet_e2e && net->svc->prtcstns & TBNET_E2E)
-		flags |= RING_FLAG_E2E;
-
-	ring = tb_ring_alloc_tx(xd->tb->nhi, -1, TBNET_RING_SIZE, flags);
+	ring = tb_ring_alloc_tx(xd->tb->nhi, -1, TBNET_RING_SIZE,
+				RING_FLAG_FRAME);
 	if (!ring) {
 		netdev_err(dev, "failed to allocate Tx ring\n");
 		return -ENOMEM;
@@ -1111,6 +1122,11 @@ static int tbnet_open(struct net_device *dev)
 	sof_mask = BIT(TBIP_PDF_FRAME_START);
 	eof_mask = BIT(TBIP_PDF_FRAME_END);
 
+	flags = RING_FLAG_FRAME;
+	/* Only enable full E2E if the other end supports it too */
+	if (tbnet_e2e && net->svc->prtcstns & TBNET_E2E)
+		flags |= RING_FLAG_E2E;
+
 	ring = tb_ring_alloc_rx(xd->tb->nhi, -1, TBNET_RING_SIZE, flags,
 				net->tx_ring.ring->hop, sof_mask,
 				eof_mask, tbnet_start_poll, net);
@@ -1123,6 +1139,17 @@ static int tbnet_open(struct net_device *dev)
 	}
 	net->rx_ring.ring = ring;
 
+#ifdef TBNET_HAVE_RING_THROTTLING
+	/* Configure both rings; a failure leaves that ring unmoderated but
+	 * the link usable.
+	 */
+	if (tb_ring_throttling(net->tx_ring.ring, TBNET_THROTTLING))
+		netdev_warn(dev, "failed to configure Tx ring throttling\n");
+	if (tb_ring_throttling(net->rx_ring.ring, TBNET_THROTTLING))
+		netdev_warn(dev, "failed to configure Rx ring throttling\n");
+#else
+	netdev_dbg(dev, "kernel lacks configurable ring throttling; using core defaults\n");
+#endif
 	WRITE_ONCE(net->rx_stopping, true);
 	start_login(net);
 
@@ -1172,7 +1199,8 @@ static bool tbnet_xmit_csum_and_map(struct tbnet *net, struct sk_buff *skb,
 						hdr->frame_index, hdr->frame_count);
 			dma_sync_single_for_device(dma_dev,
 				frames[i]->frame.buffer_phy,
-				tbnet_frame_size(frames[i]), DMA_TO_DEVICE);
+				tbnet_frame_size(frames[i]),
+						   DMA_TO_DEVICE);
 		}
 
 		return true;

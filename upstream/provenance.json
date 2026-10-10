@@ -1,18 +1,20 @@
 {
-  "baseline": "Linux v7.0",
+  "baseline": "Linux v7.2.9",
   "license": "GPL-2.0-only",
   "urls": {
-    "main.c": "https://raw.githubusercontent.com/torvalds/linux/v7.0/drivers/net/thunderbolt/main.c",
-    "trace.c": "https://raw.githubusercontent.com/torvalds/linux/v7.0/drivers/net/thunderbolt/trace.c",
-    "trace.h": "https://raw.githubusercontent.com/torvalds/linux/v7.0/drivers/net/thunderbolt/trace.h"
+    "main.c": "https://raw.githubusercontent.com/gregkh/linux/5fce161649b4d779d1b76d9fcd52dc77779774b8/drivers/net/thunderbolt/main.c",
+    "trace.c": "https://raw.githubusercontent.com/gregkh/linux/5fce161649b4d779d1b76d9fcd52dc77779774b8/drivers/net/thunderbolt/trace.c",
+    "trace.h": "https://raw.githubusercontent.com/gregkh/linux/5fce161649b4d779d1b76d9fcd52dc77779774b8/drivers/net/thunderbolt/trace.h"
   },
   "files": {
-    "main.c": "f78a351d8c3824c6f83bb45b4e60560175a504daa529759ce63556fd992f4f99",
+    "main.c": "914e42c2e3ed220e7d22893353810620db1886ac8fddbf4d4310a2de3be2c6d7",
     "trace.c": "892e55352fa73aa7e0e3822bd2444b0ec2ea0dc056bf08d112bda66b62d0a80f",
     "trace.h": "00556617e72cda84265feaca33aab5a3e4bdc3891d2ed53b0e2fe194b340fb5a"
   },
-  "additional_upstream_fix": "55d9895f8997",
-  "local_unreleased_backports": [
+  "repository": "gregkh/linux",
+  "tag": "v7.2.9",
+  "commit": "5fce161649b4d779d1b76d9fcd52dc77779774b8",
+  "included_previous_backports": [
     {
       "commit": "68bf02b6b4ad3f748c6db71fd77b6c0402d252f4",
       "author": "Fan XinRan",
@@ -28,6 +30,35 @@
       "commit": "3c8b26ebf525ba5960510f48c6e9936a79ebe76f",
       "author": "Fan Ye",
       "subject": "net: thunderbolt: Mark the connection down when bringing it up fails"
+    }
+  ],
+  "included_previous_fixes": [
+    "55d9895f8997"
+  ],
+  "imports": [
+    {
+      "commit": "5140737c592d23b4de0f98c47dd347684a0c8de3"
+    },
+    {
+      "commit": "c51777370ac2ef435401340e205ef1d0c778df28"
+    },
+    {
+      "commit": "55d9895f89970501fe126d1026b586b04a224c27"
+    },
+    {
+      "commit": "1881f2efbf7f78dc0a79a387b29fde6ff56d3731"
+    },
+    {
+      "commit": "68bf02b6b4ad3f748c6db71fd77b6c0402d252f4"
+    },
+    {
+      "commit": "1c361f6cf39be7cc0ce37c0b67bd1cdf74b0a0c1"
+    },
+    {
+      "commit": "d6c0af293129345a17dc31c9b4179dc7f3d6af7a"
+    },
+    {
+      "commit": "21c0a41260e4b799a89ef34ae1b67261cbbcdfb1"
     }
   ]
 }

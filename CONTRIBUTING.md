@@ -11,7 +11,7 @@ kernel compatibility guard and test the affected version; do not claim hardware
 support from compilation alone.
 
 For driver baseline updates and compatibility work, follow the scope and
-validation requirements in [the roadmap](docs/roadmap.md).
+validation requirements in [upstream maintenance](docs/upstream-tracking.md) and [the roadmap](docs/roadmap.md).
 
 Review all added files and artifacts for private data. Update `release-files.txt`
 with deliberately selected project files only; do not generate it from a dirty
@@ -22,3 +22,8 @@ code. Your Git author identity and pull-request content become public. No
 contributor license agreement or private telemetry is required.
 
 For sensitive security findings, follow [SECURITY.md](SECURITY.md).
+
+Preserve upstream changes as individual imports from original Linux Git commits,
+including author, author date, complete message and `Upstream-commit` SHA. Keep
+local compatibility/integration commits separate; do not squash these imports.
+See [upstream maintenance](docs/upstream-tracking.md) for preparation and replay.

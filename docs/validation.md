@@ -74,7 +74,7 @@ checksums did not increase. These recovery checks are separate from the
 The retry timing was not captured, so this does not measure plug-to-ready
 latency or establish why the first attempt timed out. The earlier unsuccessful
 window remains recorded; reproducible physical reconnection is still an open
-validation item and the PR remains draft.
+validation item. These observations concern v0.2.0, not the newer upstream baseline.
 
 Wired-uplink carrier flaps occurred before and during the disconnected window.
 A later log review also found an Ethernet adapter reset, with its TX-timeout

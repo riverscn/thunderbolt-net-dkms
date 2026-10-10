@@ -32,9 +32,9 @@ def render(repository):
     deb = f'thunderbolt-net-dkms_{package.group(1)}_all.deb'
     return f'''## Installation / upgrade
 
-**{version}: optional RX page recycling and RX lifecycle fixes.**
-Page recycling is disabled by default. Review the
-[current validation report]({docs}/validation.md) before deployment.
+**{version}: Linux 7.2.9 driver baseline with older-kernel compatibility.**
+RX normalization and page recycling remain opt-in. Review the
+[current validation report]({docs}/upstream-validation.md) before deployment.
 This is an experimental, source-only DKMS package for x86-64 Linux. Use a
 [supported kernel]({docs}/compatibility.md), its exact matching development
 headers, and DKMS >= 3.0.10.
@@ -130,18 +130,18 @@ See the **[full installation and rollback guide]({docs}/installation.md)**.
 
 **6. Rollback choices.** To disable only page recycling, remove
 `/etc/modprobe.d/thunderbolt-net-page-pool.conf`, refresh an affected initramfs and
-reload. For the **complete 0.1.1 baseline**, download and verify the
-[v0.1.1 package]({url}/releases/tag/v0.1.1) in a new directory, then:
+reload. To return to the **previous 0.2.0 driver** (Linux v7.0 baseline, same
+options), download and verify the [v0.2.0 package]({url}/releases/tag/v0.2.0)
+in a new directory, then:
 
 ```sh
-sudo apt install --allow-downgrades ./thunderbolt-net-dkms_0.1.1-1_all.deb
-sudo rm -f /etc/modprobe.d/thunderbolt-net-page-pool.conf
+sudo apt install --allow-downgrades ./thunderbolt-net-dkms_0.2.0-1_all.deb
 ```
 
-Confirm the downgrade succeeds; remove any `rx_page_pool` option added elsewhere
-before loading 0.1.1. Keep `rx_segment` configured if needed. Refresh any affected
-initramfs, reload from an independent console or reboot, and verify the running
-version is `0.1.1`. See the [complete rollback steps]({docs}/installation.md#return-to-the-011-baseline).
+Confirm the downgrade succeeds. Existing opt-in files remain valid. Refresh any
+affected initramfs, reload from an independent console or reboot, and verify the
+running version is `0.2.0`. For the older 0.1.1 baseline, see the
+[complete rollback steps]({docs}/installation.md#return-to-the-011-baseline).
 
 ## Changes in {tag}
 
@@ -150,9 +150,11 @@ version is `0.1.1`. See the [complete rollback steps]({docs}/installation.md#ret
 ## Validation and assets
 
 CI checks source/privacy rules, module builds, isolated QEMU packet tests, and
-DKMS installation/removal on three distributions. Ubuntu 26.04 additionally
-runs 63 RX model cases and a missing-sync negative control. KASAN/KCSAN experiments
-are documented manual runs, not hosted CI or actual Thunderbolt validation. See
+DKMS installation/removal on three distributions and a checksum-pinned upstream
+Linux 7.2.9 kernel, including which ring-throttling path each module uses.
+Ubuntu 26.04 additionally runs 63 RX model cases and a missing-sync negative
+control. KASAN/KCSAN experiments are documented manual runs, not hosted CI or
+actual Thunderbolt validation. See
 [testing and hardware limitations]({docs}/testing.md).
 
 Assets: source-only DKMS `.deb`, source archive, and `SHA256SUMS`.

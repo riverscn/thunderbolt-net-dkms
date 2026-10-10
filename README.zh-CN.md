@@ -6,24 +6,46 @@
 TCP 包，先验证数据与校验和，再补充保守的 GSO 分段信息；本机仍接收聚合大包，
 转发时由 Linux 出口按需分段。
 
+## 它解决什么问题？
+
+本项目针对一个明确的雷电网络问题：**Mac 的 Thunderbolt Bridge（雷雳网桥）
+连接 Linux 后，在 macOS 开启 TCP Segmentation Offload（TSO）时，
+从 macOS 上传到 Linux 的速度可能极慢。反向传输可能看似正常；关闭 Mac 的
+TSO 后问题也可能缓解。
+
+修复作用在 Linux 的接收及桥接/转发路径。启用 `rx_segment=1` 后，驱动会验证
+来自 macOS 的超大 TCP 聚合包，并在 Linux 转发前补充保守的 GSO 信息；在已验证
+拓扑中，这允许 Mac 保持 TSO 开启。相关搜索词包括：**macOS Thunderbolt Bridge
+上传慢**、**Mac 到 Linux 雷电网络 TSO**、**ThunderboltIP upload slow**、
+**Proxmox 雷电网桥**。
+
+这不表示所有雷电链路慢都是同一原因。线缆或端口枚举、主机路由器固件、电源管理、
+MTU、DHCP、路由和其他卸载功能仍需分别排查。
+
 本项目是独立维护的实验，不代表 Linux、Apple、Intel 或任何发行版的官方修复。
 它不处理所有雷电枚举、热插拔、休眠、DHCP 或 TSO 问题。
 
-## 0.2.0 版本
+## 0.3.0 版本（未发布）
 
-本次迭代增加可选的 RX 页面回收，串行化接收启动与停止流程，并回移三项上游
-连接清理修复。保留 0.1.1 的 GRO 顺序修正和保守的超大 TCP 包分段信息。
+本次迭代将驱动基线更新到 Linux 7.2.9，并保留现有 RX 改动：超大 TCP 包分段信息、
+可选的 RX 页面回收、接收启动与停止的串行化，以及 0.1.1 的 GRO 顺序修正。
 
 - `rx_page_pool=0`、`rx_segment=0` 仍为默认值，两项功能分别启用。
-- 上游驱动基线仍为 Linux v7.0；本次不增加 Linux 7.2 支持或 Arch 打包。
-- 设计见 [RX 页面回收](docs/rx-page-pool.md)，实测结果和覆盖范围见
-  [当前验证报告](docs/validation.md)，内核范围见 [兼容性](docs/compatibility.md)。
+- 上游提交保留原作者信息；本地集成和旧内核兼容是独立提交，参见
+  [维护流程](docs/upstream-tracking.md)。
+- DKMS 构建范围为 x86-64 Linux 6.8–6.19 和 7.0–7.2；CI 另外编译固定校验和的
+  Linux 7.2.9 内核。参见[兼容性](docs/compatibility.md)。
+- 在 Linux 7.2 及更新的内核上，驱动自行请求原有的 128µs 中断节流；旧内核
+  沿用其自身的设置。
 
-首次物理重连在观察窗口内超时，手动重试后已恢复连接和双向传输。重连的可重复性
-仍待验证，PR 暂保留 Draft；两次观察均记录在验证报告中。
+[实机回归](docs/upstream-validation.md)显示：在 Linux 7.0 宿主机上吞吐与 0.2.0
+持平；在 Linux 7.2.9 上，若不调用节流接口，每 GiB 中断数增加 11–44 倍，下载吞吐
+下降约 20%。本版本不宣称比 0.2.0 有性能提升。带流量物理断开、休眠唤醒与长时间
+压力测试仍未覆盖。
 
-软件包仍为实验性项目。重新加载时应保留独立管理通路；需要完整恢复原行为时
-[回退到 0.1.1](docs/installation.md#return-to-the-011-baseline)。本 PR 不代表稳定版发布。
+软件包仍为实验性项目。重新加载时应保留独立管理通路；需要恢复时
+[回退到 0.2.0](docs/installation.md#return-to-the-020-driver)。
+[0.2.0 验证报告](docs/validation.md)对应此前的 Linux v7.0 基线。
 
 ## 安装
 
@@ -51,7 +73,7 @@ sudo apt install build-essential dkms curl ca-certificates coreutils kmod ethtoo
 下载 release 包并通过 `SHA256SUMS` 校验后，再安装驱动：
 
 ```sh
-sudo apt install ./thunderbolt-net-dkms_0.2.0-1_all.deb
+sudo apt install ./thunderbolt-net-dkms_0.3.0-1_all.deb
 dkms status -m thunderbolt-net
 modinfo -n thunderbolt_net
 ```
@@ -107,7 +129,7 @@ dpkg-buildpackage --build=binary --no-sign
 make dist
 ```
 
-GitHub CI 包含源码隐私检查、三个发行版的编译、隔离 QEMU 内核测试，以及
+GitHub CI 包含源码隐私检查、三个发行版与固定版本 Linux 7.2.9 内核的编译、隔离 QEMU 内核测试，以及
 Debian 安装/卸载/恢复原驱动验证。通过后生成 `.deb`、源码归档和 SHA-256 校验。
 推送与 `VERSION` 一致的版本标签时，发布实验性 prerelease。
 

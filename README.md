@@ -7,30 +7,54 @@ It adds an opt-in receive workaround for oversized TCP packets from a peer:
 validate the packet, attach conservative GSO metadata, and retain the aggregate
 so local delivery stays fast and forwarding can segment when required.
 
+## What problem does this address?
+
+This project targets a specific Thunderbolt networking failure seen with a
+**Mac Thunderbolt Bridge** connected to a Linux host: uploads from **macOS to
+Linux** can become extremely slow when macOS TCP Segmentation Offload (TSO) is
+enabled. The same connection may appear usable in the reverse direction, or
+become less bad only after disabling TSO on the Mac.
+
+The workaround is for the Linux receive and bridge/forwarding path. With
+`rx_segment=1`, it validates the oversized TCP aggregate arriving from macOS
+and supplies conservative GSO information before Linux forwards it. This lets
+the Mac keep TSO enabled in the tested topology. It is relevant to searches for
+terms such as **macOS Thunderbolt Bridge slow upload**, **Mac to Linux
+Thunderbolt networking TSO**, **ThunderboltIP upload slow**, and **Proxmox
+Thunderbolt Bridge**.
+
+It does not claim that every slow Thunderbolt link has this cause. Cable or port
+enumeration, host-router firmware, power management, MTU, DHCP, routing and
+other offload interactions need separate diagnosis.
+
 This is an independent project, not an upstream Linux, Apple, Intel, Ubuntu,
 Debian, or Proxmox release. It is not a general fix for cable enumeration,
 runtime power management, DHCP, or every TSO interoperability problem.
 
-## Version 0.2.0
+## Version 0.3.0 (unreleased)
 
-This iteration adds opt-in RX page recycling, serializes RX startup/teardown,
-and backports three upstream connection-cleanup fixes. It retains the 0.1.1
-GRO ordering correction and conservative oversized-TCP normalization.
+This iteration rebases the driver on Linux 7.2.9 and keeps the existing RX
+changes: oversized-TCP normalization, optional page recycling, RX lifecycle
+serialization and the 0.1.1 GRO header correction.
 
 - `rx_page_pool=0` and `rx_segment=0` remain the defaults.
-- Page recycling and TCP normalization can be enabled independently.
-- The driver baseline remains Linux v7.0; Linux 7.2 and Arch packaging are
-  outside this iteration. See [compatibility](docs/compatibility.md).
-- See [RX lifecycle design](docs/rx-page-pool.md) and the current
-  [validation report](docs/validation.md) for measured results and coverage.
+- Upstream imports keep their original authorship; local integration and
+  older-kernel compatibility are separate commits. See
+  [upstream maintenance](docs/upstream-tracking.md).
+- The build gate allows x86-64 Linux 6.8–6.19 and 7.0–7.2. CI also builds a
+  checksum-pinned Linux 7.2.9 kernel. See [compatibility](docs/compatibility.md).
+- On Linux 7.2 and newer cores the driver requests the previous 128-microsecond
+  interrupt throttling itself; older cores keep their own moderation.
 
-An initial physical reconnect timed out; a manual retry restored the link and
-bidirectional transfer. Repeatability remains open and the PR stays draft.
-See the validation report for both observations.
+The [hardware regression](docs/upstream-validation.md) found throughput equal
+to 0.2.0 on a Linux 7.0 host. On Linux 7.2.9, a build without the throttling
+call had 11–44× more interrupts per GiB and about 20% lower download throughput.
+No performance gain over 0.2.0 is claimed. Physical disconnect during traffic,
+suspend/resume and long stress remain open.
 
 The package remains experimental. Use an independent management path when
-reloading; [rollback](docs/installation.md#return-to-the-011-baseline) is to
-0.1.1. No stable release is declared by this PR.
+reloading; [rollback](docs/installation.md#return-to-the-020-driver) is to 0.2.0.
+The [0.2.0 report](docs/validation.md) covers the previous Linux v7.0 baseline.
 
 ## Install and enable
 
@@ -56,7 +80,7 @@ the **exact running kernel**. See [prerequisite checks](docs/installation.md#ins
 Download the release package and verify `SHA256SUMS`, then install:
 
 ```sh
-sudo apt install ./thunderbolt-net-dkms_0.2.0-1_all.deb
+sudo apt install ./thunderbolt-net-dkms_0.3.0-1_all.deb
 dkms status -m thunderbolt-net
 modinfo -n thunderbolt_net
 ```
@@ -123,10 +147,10 @@ the DKMS package and run only in a diskless QEMU guest with no external NIC.
 
 ## CI and releases
 
-GitHub Actions checks source hygiene, builds on Ubuntu 24.04, Debian 13 and
-Ubuntu 26.04, runs kernel tests, and verifies package install/removal in isolated
-containers. Successful runs upload a `.deb`, an allowlisted source archive and
-SHA-256 checksums. A matching `v0.2.0` tag publishes an **experimental prerelease**
+GitHub Actions checks source hygiene, builds on Ubuntu 24.04, Debian 13,
+Ubuntu 26.04 and a pinned upstream Linux 7.2.9 kernel, runs kernel tests, and
+verifies package install/removal in isolated containers. Successful runs upload a `.deb`, an allowlisted source archive and
+SHA-256 checksums. A matching `v0.3.0` tag publishes an **experimental prerelease**
 only after all jobs pass. See [release procedure](docs/releasing.md).
 
 No private hardware runner or local network access is needed. Third-party
@@ -138,8 +162,8 @@ permissions and no release token.
 - [Installation, opt-in and rollback](docs/installation.md)
 - [Design and unsupported packet types](docs/design.md)
 - [Kernel compatibility](docs/compatibility.md)
-- [Upstream tracking and development roadmap](docs/roadmap.md)
-- [Tests and anonymized performance evidence](docs/testing.md)
+- [Upstream maintenance](docs/upstream-tracking.md) and [roadmap](docs/roadmap.md)
+- [Tests](docs/testing.md) and [current hardware validation](docs/upstream-validation.md)
 - [Privacy and safe bug reports](docs/privacy.md)
 - [Source provenance](NOTICE.md), [contributing](CONTRIBUTING.md), [security](SECURITY.md)
 

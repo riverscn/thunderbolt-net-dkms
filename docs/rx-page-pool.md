@@ -1,6 +1,6 @@
 # RX page recycling
 
-Version 0.2.0 adds optional receive-page recycling. `rx_page_pool=0` is the
+Version 0.2.0 added optional receive-page recycling. `rx_page_pool=0` is the
 default; `rx_page_pool=1` retains DMA mappings in a page pool instead of
 allocating and mapping a new page for each receive frame. `rx_segment` remains
 an independent option for oversized TCP forwarding.
@@ -25,7 +25,8 @@ is off. Disabling `rx_page_pool` changes the allocator, not the entire driver;
 
 ## Upstream fixes
 
-This version includes three attributed Linux fixes:
+Version 0.2.0 backported three attributed Linux fixes; from 0.3.0 they are part
+of the Linux 7.2.9 baseline:
 
 - [68bf02b6b4ad](https://github.com/torvalds/linux/commit/68bf02b6b4ad3f748c6db71fd77b6c0402d252f4):
   disable DMA paths before stopping rings (Fan XinRan).
