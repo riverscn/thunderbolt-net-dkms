@@ -54,7 +54,7 @@ def prepare(destination):
         '\n\n'.join(bodies.values()) + '\n')
     for name in ('harness.c', 'sanity.c', 'Makefile'):
         shutil.copy2(HERE / name, destination / name)
-    for name in ('rx_fixup.c', 'rx_fixup.h'):
+    for name in ('rx_fixup.c', 'rx_fixup.h', 'compat.h'):
         shutil.copy2(ROOT / 'src' / name, destination / name)
     (destination / 'shared-functions.json').write_text(json.dumps(hashes, indent=2) + '\n')
     return hashes
