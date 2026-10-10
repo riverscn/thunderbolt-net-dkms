@@ -108,9 +108,33 @@
  	if (ip_exceeds_mtu(skb, mtu)) {
  		IP_INC_STATS(net, IPSTATS_MIB_FRAGFAILS);
  		icmp_send(skb, ICMP_DEST_UNREACH, ICMP_FRAG_NEEDED,
+--- a/net/ipv4/ip_output.c
++++ b/net/ipv4/ip_output.c
+@@ -306,6 +306,10 @@
+ 	}
+ #endif
+ 	mtu = ip_skb_dst_mtu(sk, skb);
++	if (skb_rx_gso_clamp_mtu(skb, mtu)) {
++		kfree_skb(skb);
++		return -EINVAL;
++	}
+ 	if (skb_is_gso(skb))
+ 		return ip_finish_output_gso(net, sk, skb, mtu);
+ 
 --- a/net/ipv6/ip6_output.c
 +++ b/net/ipv6/ip6_output.c
-@@ -640,6 +640,8 @@
+@@ -198,6 +198,10 @@
+ #endif
+ 
+ 	mtu = ip6_skb_dst_mtu(skb);
++	if (skb_rx_gso_clamp_mtu(skb, mtu)) {
++		kfree_skb(skb);
++		return -EINVAL;
++	}
+ 	if (skb_is_gso(skb))
+ 		return ip6_finish_output_gso(net, sk, skb, mtu);
+ 
+@@ -640,6 +644,8 @@
  	if (mtu < IPV6_MIN_MTU)
  		mtu = IPV6_MIN_MTU;
  

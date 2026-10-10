@@ -340,7 +340,7 @@ done
         assert legacy[2:] == (0, 26, 0), legacy
         assert 'TBNET_ORDER ERROR' not in text, text[-6000:]
         print(f'GRO ordering: 256 corrected cases passed; legacy control reordered {legacy[1]}/256')
-        print('QEMU passed: 39 unit tests, 16 bridge/router cases, 80 MTU/PMTU observations, 6 TCP sessions, GRO ordering, driver load/unload')
+        print(f'QEMU passed: 39 unit tests, 16 bridge/router cases, 80 MTU/PMTU observations, {len(sessions)} TCP sessions, GRO ordering, driver load/unload')
 
 if __name__ == '__main__':
     main()
