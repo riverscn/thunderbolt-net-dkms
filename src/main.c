@@ -932,7 +932,7 @@ static int tbnet_poll(struct napi_struct *napi, int budget)
 
 		skb = net->skb;
 		if (!skb) {
-			skb = build_skb(page_address(page),
+			skb = napi_build_skb(page_address(page),
 					TBNET_RX_PAGE_SIZE);
 			if (!skb) {
 				__free_pages(page, TBNET_RX_PAGE_ORDER);
