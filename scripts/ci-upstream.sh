@@ -29,7 +29,10 @@ grep -qx 'CONFIG_USB4_NET=m' .config || {
     echo 'Test kernel must build the original thunderbolt_net module'
     exit 1
 }
-make -j2 bzImage modules > "$root/build/upstream-kernel/build.log" 2>&1 || {
+# nproc follows the CPUs this container may run on, so larger runners build faster.
+jobs=$(nproc)
+echo "Building the test kernel with $jobs parallel jobs"
+make -j"$jobs" bzImage modules > "$root/build/upstream-kernel/build.log" 2>&1 || {
     tail -100 "$root/build/upstream-kernel/build.log"
     exit 1
 }
