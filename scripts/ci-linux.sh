@@ -52,7 +52,10 @@ case "$selected" in */updates/dkms/*) ;; *) echo "DKMS override not selected: $s
 test "$(modinfo -k "$kernel" -F version thunderbolt_net)" = "$version"
 bash scripts/check-throttling.sh "$kernel" "$selected"
 test -z "$(find /lib/modules/"$kernel" -name 'tbnet_*test.ko*' -print -quit)"
+defaults='options thunderbolt_net rx_segment=1 rx_segment_mtu=1500 rx_page_pool=1'
+modprobe --showconfig | grep -qxF "$defaults" || { echo 'Package defaults not visible to modprobe' >&2; exit 1; }
 dpkg --purge thunderbolt-net-dkms
+test ! -e /usr/lib/modprobe.d/thunderbolt-net.conf
 restored=$(modinfo -k "$kernel" -F filename thunderbolt_net)
 test "$restored" = "$original"
 test "$(sha256sum "$restored" | cut -d ' ' -f 1)" = "$original_hash"

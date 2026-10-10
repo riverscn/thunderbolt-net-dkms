@@ -1,3 +1,0 @@
-# Optional RX recycling. Default is off; see docs/rx-page-pool.md.
-# Keep this separate from the rx_segment configuration.
-options thunderbolt_net rx_page_pool=1

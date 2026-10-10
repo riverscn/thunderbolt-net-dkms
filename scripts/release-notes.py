@@ -33,8 +33,8 @@ def render(repository):
     return f'''## Installation / upgrade
 
 **{version}: Linux 7.2.9 driver baseline with older-kernel compatibility.**
-RX normalization and page recycling remain opt-in. Review the
-[current validation report]({docs}/upstream-validation.md) before deployment.
+The package now enables RX normalization and page recycling by default.
+Review the [current validation report]({docs}/upstream-validation.md) before deployment.
 This is an experimental, source-only DKMS package for x86-64 Linux. Use a
 [supported kernel]({docs}/compatibility.md), its exact matching development
 headers, and DKMS >= 3.0.10.
@@ -89,28 +89,32 @@ modinfo -F version thunderbolt_net
 Confirm that the `.deb` checksum is `OK`. Installing the package does not replace
 the driver already loaded in memory.
 
-**3. Opt in to oversized TCP RX normalization if needed.** To enable the
-macOS TSO forwarding workaround, install the provided configuration:
+**3. Review the default configuration.** The package installs
+`/usr/lib/modprobe.d/thunderbolt-net.conf`, removed again with the package:
 
-```sh
-sudo install -m 644 \\
-  /usr/share/doc/thunderbolt-net-dkms/examples/thunderbolt-net-rx.conf.example \\
-  /etc/modprobe.d/thunderbolt-net-rx.conf
+```conf
+options thunderbolt_net rx_segment=1 rx_segment_mtu=1500 rx_page_pool=1
 ```
 
-An existing opt-in configuration is retained on upgrade.
-
-**4. Opt in to the RX page recycling separately.** It is disabled by default;
-install this file to test `rx_page_pool=1`:
+It enables the macOS TSO forwarding workaround and RX page recycling. Opt-in
+files from earlier versions set the same values and are no longer needed:
 
 ```sh
-sudo install -m 644 \\
-  /usr/share/doc/thunderbolt-net-dkms/examples/thunderbolt-net-page-pool.conf.example \\
+sudo rm -f /etc/modprobe.d/thunderbolt-net-rx.conf \\
   /etc/modprobe.d/thunderbolt-net-page-pool.conf
 ```
 
-This does not replace the `rx_segment` setting. Shared NAPI/lifecycle changes
-are active even when page recycling is disabled; see the
+**4. Change a default only if needed.** Copy the file to `/etc/modprobe.d/`
+under the same name and edit the copy, for example `rx_page_pool=0`:
+
+```sh
+sudo cp /usr/lib/modprobe.d/thunderbolt-net.conf /etc/modprobe.d/thunderbolt-net.conf
+sudoedit /etc/modprobe.d/thunderbolt-net.conf
+```
+
+The same name in `/etc` replaces the package file and survives upgrades; a file
+with another name may sort before it and have no effect. Shared NAPI/lifecycle
+changes are active even when page recycling is disabled; see the
 [RX lifecycle design]({docs}/rx-page-pool.md).
 
 **5. Activate and verify.** Reload from a local console or an independent
@@ -123,24 +127,25 @@ cat /sys/module/thunderbolt_net/parameters/rx_segment
 cat /sys/module/thunderbolt_net/parameters/rx_page_pool
 ```
 
-Expect version `{version}` and `Y` for each parameter you opted in to. A reboot can be
+Expect version `{version}` and `Y` for both parameters with the defaults. A reboot can be
 used instead of a reload. If the module is in an initramfs, refresh that image
 first. Secure Boot may require enrolling the local DKMS signing key.
 See the **[full installation and rollback guide]({docs}/installation.md)**.
 
-**6. Rollback choices.** To disable only page recycling, remove
-`/etc/modprobe.d/thunderbolt-net-page-pool.conf`, refresh an affected initramfs and
-reload. To return to the **previous 0.2.0 driver** (Linux v7.0 baseline, same
+**6. Rollback choices.** To disable only page recycling, set `rx_page_pool=0` in
+`/etc/modprobe.d/thunderbolt-net.conf` (step 4), refresh an affected initramfs
+and reload. To return to the **previous 0.2.0 driver** (Linux v7.0 baseline, same
 options), download and verify the [v0.2.0 package]({url}/releases/tag/v0.2.0)
-in a new directory, then:
+in a new directory. 0.2.0 installs no defaults and starts with every option off,
+so keep the current settings in `/etc` first:
 
 ```sh
+sudo cp /usr/lib/modprobe.d/thunderbolt-net.conf /etc/modprobe.d/thunderbolt-net.conf
 sudo apt install --allow-downgrades ./thunderbolt-net-dkms_0.2.0-1_all.deb
 ```
 
-Confirm the downgrade succeeds. Existing opt-in files remain valid. Refresh any
-affected initramfs, reload from an independent console or reboot, and verify the
-running version is `0.2.0`. For the older 0.1.1 baseline, see the
+Confirm the downgrade succeeds. Refresh any affected initramfs, reload from an
+independent console or reboot, and verify the running version is `0.2.0`. For the older 0.1.1 baseline, see the
 [complete rollback steps]({docs}/installation.md#return-to-the-011-baseline).
 
 ## Changes in {tag}

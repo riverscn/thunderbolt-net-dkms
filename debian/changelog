@@ -4,6 +4,7 @@ thunderbolt-net (0.3.0-1) unstable; urgency=medium
   * Add older-kernel compatibility for the frame-size and throttling APIs.
   * Add pinned upstream-kernel CI and a ring-throttling build-path check.
   * Retain RX normalization, page recycling and lifecycle serialization.
+  * Enable rx_segment and rx_page_pool through one packaged modprobe file.
   * Document hardware regression on the older-core and new-core paths.
 
  -- Shun Li <riverscn@gmail.com>  Sat, 10 Oct 2026 13:00:00 +0000

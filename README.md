@@ -3,7 +3,7 @@
 [简体中文](README.zh-CN.md)
 
 An **experimental**, out-of-tree Linux `thunderbolt_net` driver packaged for DKMS.
-It adds an opt-in receive workaround for oversized TCP packets from a peer:
+It adds a receive workaround for oversized TCP packets from a peer:
 validate the packet, attach conservative GSO metadata, and retain the aggregate
 so local delivery stays fast and forwarding can segment when required.
 
@@ -37,7 +37,10 @@ This iteration rebases the driver on Linux 7.2.9 and keeps the existing RX
 changes: oversized-TCP normalization, optional page recycling, RX lifecycle
 serialization and the 0.1.1 GRO header correction.
 
-- `rx_page_pool=0` and `rx_segment=0` remain the defaults.
+- The package now enables `rx_segment=1 rx_segment_mtu=1500 rx_page_pool=1`
+  through one file, `/usr/lib/modprobe.d/thunderbolt-net.conf`. It is removed
+  with the package; override it with the same name in `/etc/modprobe.d/`.
+  The separate opt-in files of earlier versions are no longer needed.
 - Upstream imports keep their original authorship; local integration and
   older-kernel compatibility are separate commits. See
   [upstream maintenance](docs/upstream-tracking.md).
@@ -91,35 +94,22 @@ does not request an active module reload. The currently loaded module stays in
 memory until it is unloaded or the system reboots; `modinfo` describes the module
 on disk, not necessarily the one currently running.
 
-The two optional configuration files can coexist in `/etc/modprobe.d/`:
-
-| File | Parameters | Purpose |
-| --- | --- | --- |
-| `thunderbolt-net-rx.conf` | `rx_segment=1 rx_segment_mtu=1500` | macOS TSO forwarding workaround |
-| `thunderbolt-net-page-pool.conf` | `rx_page_pool=1` | RX page recycling optimization |
-
-Both target `thunderbolt_net`. `modprobe` combines their distinct options; the
-second file does not replace the first. Install either independently, or both
-as shown below after reviewing the [installation guide](docs/installation.md):
-
-```sh
-sudo install -m 644 \
-  /usr/share/doc/thunderbolt-net-dkms/examples/thunderbolt-net-rx.conf.example \
-  /etc/modprobe.d/thunderbolt-net-rx.conf
-sudo install -m 644 \
-  /usr/share/doc/thunderbolt-net-dkms/examples/thunderbolt-net-page-pool.conf.example \
-  /etc/modprobe.d/thunderbolt-net-page-pool.conf
-```
-
-These paths are provided by the `.deb`; source checkouts also contain the
-examples under `packaging/`. Both files together are equivalent to:
+The package installs its defaults in `/usr/lib/modprobe.d/thunderbolt-net.conf`:
 
 ```conf
 options thunderbolt_net rx_segment=1 rx_segment_mtu=1500 rx_page_pool=1
 ```
 
-Use either layout, avoiding duplicate or conflicting definitions of the same
-parameter. Separate files make it easy to disable page recycling independently.
+This enables the macOS TSO forwarding workaround and RX page recycling. The file
+belongs to the package and is removed with it. Files that earlier versions asked
+you to create, `/etc/modprobe.d/thunderbolt-net-rx.conf` and
+`thunderbolt-net-page-pool.conf`, set the same values and can be deleted.
+
+To change a value, copy the file to `/etc/modprobe.d/thunderbolt-net.conf` and
+edit the copy; the same name in `/etc` replaces the package file, and upgrades
+keep it. A differently named file does not reliably override it; see
+[change or disable the defaults](docs/installation.md#change-or-disable-the-defaults).
+
 Changes apply on the next module load. Refresh an affected initramfs first;
 reload only from a console or independent management connection, since it
 interrupts Thunderbolt networking. After reloading or rebooting, verify:
@@ -130,7 +120,7 @@ cat /sys/module/thunderbolt_net/parameters/rx_segment_mtu
 cat /sys/module/thunderbolt_net/parameters/rx_page_pool
 ```
 
-With both examples enabled, expect `Y`, `1500`, and `Y`, respectively.
+With the defaults, expect `Y`, `1500`, and `Y`, respectively.
 
 ## Build
 
@@ -159,7 +149,7 @@ permissions and no release token.
 
 ## Documentation
 
-- [Installation, opt-in and rollback](docs/installation.md)
+- [Installation, configuration and rollback](docs/installation.md)
 - [Design and unsupported packet types](docs/design.md)
 - [Kernel compatibility](docs/compatibility.md)
 - [Upstream maintenance](docs/upstream-tracking.md) and [roadmap](docs/roadmap.md)

@@ -30,7 +30,10 @@ MTU、DHCP、路由和其他卸载功能仍需分别排查。
 本次迭代将驱动基线更新到 Linux 7.2.9，并保留现有 RX 改动：超大 TCP 包分段信息、
 可选的 RX 页面回收、接收启动与停止的串行化，以及 0.1.1 的 GRO 顺序修正。
 
-- `rx_page_pool=0`、`rx_segment=0` 仍为默认值，两项功能分别启用。
+- 软件包现在通过一个文件 `/usr/lib/modprobe.d/thunderbolt-net.conf` 默认启用
+  `rx_segment=1 rx_segment_mtu=1500 rx_page_pool=1`。该文件随软件包卸载而删除；
+  如需修改，在 `/etc/modprobe.d/` 下放一个同名文件。以前版本要求手动创建的
+  两个配置文件已不再需要。
 - 上游提交保留原作者信息；本地集成和旧内核兼容是独立提交，参见
   [维护流程](docs/upstream-tracking.md)。
 - DKMS 构建范围为 x86-64 Linux 6.8–6.19 和 7.0–7.2；CI 另外编译固定校验和的
@@ -82,33 +85,20 @@ modinfo -n thunderbolt_net
 安装过程不请求重载正在使用的网卡。`modinfo` 显示的是磁盘上的模块，不能单靠
 它确认内存中正在运行的模块已经切换。
 
-两个可选配置文件可以同时放在 `/etc/modprobe.d/` 中：
-
-| 文件 | 参数 | 用途 |
-| --- | --- | --- |
-| `thunderbolt-net-rx.conf` | `rx_segment=1 rx_segment_mtu=1500` | macOS TSO 转发修正 |
-| `thunderbolt-net-page-pool.conf` | `rx_page_pool=1` | RX 页面回收优化 |
-
-它们都配置 `thunderbolt_net`，`modprobe` 会合并不同的参数，第二个文件不会覆盖
-第一个。可以分别启用；如需同时启用，阅读 [安装与回退说明](docs/installation.md) 后执行：
-
-```sh
-sudo install -m 644 \
-  /usr/share/doc/thunderbolt-net-dkms/examples/thunderbolt-net-rx.conf.example \
-  /etc/modprobe.d/thunderbolt-net-rx.conf
-sudo install -m 644 \
-  /usr/share/doc/thunderbolt-net-dkms/examples/thunderbolt-net-page-pool.conf.example \
-  /etc/modprobe.d/thunderbolt-net-page-pool.conf
-```
-
-以上示例由 `.deb` 安装；源码仓库中也可以在 `packaging/` 找到。两个文件一起使用
-等价于在一个配置文件中写入：
+软件包把默认配置安装在 `/usr/lib/modprobe.d/thunderbolt-net.conf`：
 
 ```conf
 options thunderbolt_net rx_segment=1 rx_segment_mtu=1500 rx_page_pool=1
 ```
 
-选择一种布局即可，避免重复或冲突地设置同一参数。分文件便于单独关闭页面回收。
+它启用 macOS TSO 转发修正和 RX 页面回收。该文件属于软件包，卸载时一并删除。
+以前版本要求手动创建的 `/etc/modprobe.d/thunderbolt-net-rx.conf` 和
+`thunderbolt-net-page-pool.conf` 设置的是相同的值，可以删除。
+
+如需修改，把该文件复制为 `/etc/modprobe.d/thunderbolt-net.conf` 再编辑副本：
+`/etc` 下的同名文件会整体替换软件包里的文件，升级时也会保留。用其他文件名
+覆盖并不可靠，详见[修改或关闭默认值](docs/installation.md#change-or-disable-the-defaults)。
+
 配置在下次加载模块时生效；若涉及 initramfs，应先更新它。只在控制台或独立管理
 链路上重载，因为这会中断雷电连接。重载或重启后检查实际参数：
 
@@ -118,7 +108,7 @@ cat /sys/module/thunderbolt_net/parameters/rx_segment_mtu
 cat /sys/module/thunderbolt_net/parameters/rx_page_pool
 ```
 
-同时启用两个示例时，结果应依次为 `Y`、`1500`、`Y`。
+使用默认配置时，结果应依次为 `Y`、`1500`、`Y`。
 
 ## 构建与发布
 

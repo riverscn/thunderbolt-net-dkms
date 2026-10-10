@@ -8,8 +8,13 @@ import sys
 import tarfile
 from privacy import findings
 
+# The only configuration the package installs: module defaults, not network state.
+MODPROBE_CONF = 'usr/lib/modprobe.d/thunderbolt-net.conf'
+EXPECTED_OPTIONS = 'options thunderbolt_net rx_segment=1 rx_segment_mtu=1500 rx_page_pool=1'
+
 deb = pathlib.Path(sys.argv[1])
 errors = []
+seen_conf = False
 if subprocess.check_output(['dpkg-deb', '-f', str(deb), 'Architecture'], text=True).strip() != 'all':
     errors.append('expected an Architecture: all source-only package')
 for option in ('--fsys-tarfile', '--ctrl-tarfile'):
@@ -22,7 +27,9 @@ for option in ('--fsys-tarfile', '--ctrl-tarfile'):
             if not member.isfile() or name.startswith('/') or '..' in pathlib.PurePosixPath(name).parts:
                 errors.append(f'{name}: unexpected archive entry')
                 continue
-            if option == '--fsys-tarfile' and not name.startswith(('usr/src/thunderbolt-net-', 'usr/share/doc/thunderbolt-net-dkms/')):
+            if option == '--fsys-tarfile' and not (
+                    name.startswith(('usr/src/thunderbolt-net-', 'usr/share/doc/thunderbolt-net-dkms/'))
+                    or name == MODPROBE_CONF):
                 errors.append(f'{name}: unexpected installed path')
             content = archive.extractfile(member).read()
             if name.endswith('.gz'):
@@ -35,9 +42,16 @@ for option in ('--fsys-tarfile', '--ctrl-tarfile'):
                 errors.append(f'{name}: unexpected binary payload')
                 continue
             errors += [f'{name}: {hit}' for hit in findings(text)]
+            if name == MODPROBE_CONF:
+                seen_conf = True
+                directives = [l for l in text.splitlines() if l.strip() and not l.lstrip().startswith('#')]
+                if directives != [EXPECTED_OPTIONS]:
+                    errors.append(f'{name}: expected only "{EXPECTED_OPTIONS}"')
             if option == '--ctrl-tarfile' and name in ('postinst','prerm','postrm','preinst'):
                 if any(command in text for command in ('rmmod ', 'modprobe -r', 'ip link set', 'systemctl restart')):
                     errors.append(f'{name}: active network mutation in maintainer script')
+if not seen_conf:
+    errors.append(f'{MODPROBE_CONF}: missing package defaults')
 if errors:
     sys.exit('\n'.join(errors))
 print('Debian package content and privacy checks passed')
