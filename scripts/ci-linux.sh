@@ -36,6 +36,10 @@ deb="../thunderbolt-net-dkms_${version}-1_all.deb"
 python3 scripts/audit-deb.py "$deb"
 lintian --fail-on error "$deb"
 python3 scripts/qemu-test.py --kernel "$kernel"
+if test "$ID" = ubuntu && test "$VERSION_ID" = 26.04; then
+    python3 tests/rx-lifecycle/run.py --kernel "$kernel"
+    python3 tests/rx-lifecycle/run.py --kernel "$kernel" --mode negative
+fi
 
 # Actual package lifecycle, isolated from the host's module tree and kernel.
 test ! -d "/var/lib/dkms/thunderbolt-net/$version"

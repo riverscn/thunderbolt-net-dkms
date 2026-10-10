@@ -51,6 +51,16 @@ src/tests/test_path.c
 src/tests/test_rx.c
 src/trace.c
 src/trace.h
+tests/rx-lifecycle/Makefile
+tests/rx-lifecycle/README.md
+tests/rx-lifecycle/build-kernels.py
+tests/rx-lifecycle/extract.py
+tests/rx-lifecycle/harness.c
+tests/rx-lifecycle/kasan.config
+tests/rx-lifecycle/kcsan.config
+tests/rx-lifecycle/run.py
+tests/rx-lifecycle/sanity.c
+tests/rx-lifecycle/tested-functions.json
 tests/test_release.py
 upstream/main.c
 upstream/provenance.json

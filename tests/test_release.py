@@ -31,5 +31,17 @@ class ReleaseTests(unittest.TestCase):
             b = module.create(pathlib.Path(tmp) / 'b.tar.gz')
             self.assertEqual(a.read_bytes(), b.read_bytes())
 
+    def test_rx_model_uses_the_tested_driver_functions(self):
+        spec = importlib.util.spec_from_file_location(
+            'extract', ROOT / 'tests/rx-lifecycle/extract.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        with tempfile.TemporaryDirectory() as tmp:
+            destination = pathlib.Path(tmp)
+            self.assertEqual(len(module.prepare(destination)), 10)
+            generated = (destination / 'core.inc').read_text()
+            for body in module.fragments((ROOT / 'src/main.c').read_text()).values():
+                self.assertIn(body, generated)
+
 if __name__ == '__main__':
     unittest.main()
