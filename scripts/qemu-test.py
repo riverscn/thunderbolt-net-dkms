@@ -31,7 +31,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='tbnet-qemu-') as temporary:
         base = pathlib.Path(temporary)
         fs = base / 'root'
-        for part in ('bin','dev','proc','sys','tmp','lib/modules'):
+        for part in ('bin','dev','proc','sys','tmp','run','etc','lib/modules'):
             (fs / part).mkdir(parents=True, exist_ok=True)
 
         def copy_binary(path):
@@ -46,6 +46,8 @@ def main():
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(library, dest)
 
+        run(['cc', '-O2', '-Wall', '-Wextra', '-Werror', '-static',
+             str(ROOT / 'tests/tcp-session.c'), '-o', str(fs / 'tcp-session')])
         busybox = shutil.which('busybox')
         if not busybox:
             raise RuntimeError('busybox-static is required')
@@ -55,10 +57,10 @@ def main():
         (fs / 'bin/sh').symlink_to('busybox')
         copy_binary('/usr/sbin/ip' if pathlib.Path('/usr/sbin/ip').exists() else '/usr/bin/ip')
         ip = '/usr/sbin/ip' if (fs / 'usr/sbin/ip').exists() else '/usr/bin/ip'
-        for name in ('thunderbolt_net', 'tbnet_rx_test', 'tbnet_path_test', 'tbnet_order_test'):
+        for name in ('thunderbolt_net', 'tbnet_rx_test', 'tbnet_path_test', 'tbnet_order_test', 'tbnet_tcp_test'):
             shutil.copy2(ROOT / 'src' / (name + '.ko'), fs / (name + '.ko'))
         dependencies = []
-        for name in ('thunderbolt', 'bridge'):
+        for name in ('thunderbolt', 'bridge', 'veth'):
             result = run(['modprobe', '-S', kernel, '--show-depends', name], capture_output=True, text=True)
             for line in result.stdout.splitlines():
                 if not line.startswith('insmod '):
@@ -195,6 +197,59 @@ echo N > /sys/module/tbnet_path_test/parameters/mtu_probe
  $B rmmod tbnet_order_test
 done
 '''
+        init += r'''$B rmmod tbnet_path_test
+for ipv in 4 6; do
+ for policy in preserve auto capped; do
+  mode=1
+  cap=0
+  test "$policy" != preserve || mode=0
+  test "$policy" != capped || cap=1280
+  $B insmod /tbnet_tcp_test.ko mode="$mode" cap="$cap"
+  $IP netns add sender
+  $IP netns add receiver
+  $IP link set tbpeer0 netns sender
+  $IP link add out0 type veth peer name in0
+  $IP link set in0 netns receiver
+  $IP link set tbrx0 mtu 9000 up
+  $IP link set out0 mtu 9000 up
+  $IP -n sender link set lo up
+  $IP -n sender link set tbpeer0 mtu 9000 up
+  $IP -n receiver link set lo up
+  $IP -n receiver link set in0 mtu 9000 up
+  $IP addr add 192.0.2.1/24 dev tbrx0
+  $IP addr add 198.51.100.1/24 dev out0
+  $IP -n sender addr add 192.0.2.10/24 dev tbpeer0
+  $IP -n receiver addr add 198.51.100.20/24 dev in0
+  $IP -n sender route add default via 192.0.2.1
+  $IP -n receiver route add default via 198.51.100.1
+  $IP route add 198.51.100.20/32 dev out0 mtu 1280
+  $IP -6 addr add 2001:db8:1::1/64 dev tbrx0 nodad
+  $IP -6 addr add 2001:db8:2::1/64 dev out0 nodad
+  $IP -n sender -6 addr add 2001:db8:1::10/64 dev tbpeer0 nodad
+  $IP -n receiver -6 addr add 2001:db8:2::20/64 dev in0 nodad
+  $IP -n sender -6 route add default via 2001:db8:1::1
+  $IP -n receiver -6 route add default via 2001:db8:2::1
+  $IP -6 route add 2001:db8:2::20/128 dev out0 mtu 1280
+  echo 0 > /proc/sys/net/ipv4/conf/tbrx0/rp_filter
+  dest=198.51.100.20
+  test "$ipv" != 6 || dest=2001:db8:2::20
+  $IP netns exec receiver /tcp-session server "$dest" &
+  server_pid=$!
+  $B sleep 1
+  echo "TBNET_TCP_CASE ipv=$ipv policy=$policy route_mtu=1280"
+  $IP netns exec sender /tcp-session client "$dest"
+  for metric in aggregates rebuilt failures min_mss; do
+   echo "TBNET_TCP_METRIC $metric=$($B cat /sys/module/tbnet_tcp_test/parameters/$metric)"
+  done
+  kill "$server_pid" 2>/dev/null || true
+  wait "$server_pid" 2>/dev/null || true
+  $IP netns del sender
+  $IP netns del receiver
+  $IP link del out0 2>/dev/null || true
+  $B rmmod tbnet_tcp_test
+ done
+done
+'''
         (fs / 'init').write_text(init)
         (fs / 'init').chmod(0o755)
         names = b'.\0' + b'\0'.join(str(p.relative_to(fs)).encode() for p in sorted(fs.rglob('*'))) + b'\0'
@@ -238,6 +293,29 @@ done
             json.dumps(observations, indent=2) + '\n')
         for row in observations:
             print('MTU observation:', row)
+        sessions = []
+        for match in re.finditer(
+                r'TBNET_TCP_CASE ipv=(\d) policy=(\w+) route_mtu=(\d+)\s+'
+                r'TBNET_TCP success=(\d) sent=(\d+) pmtu=(\d+) snd_mss=(\d+) retrans=(\d+)'
+                r'\s+TBNET_TCP_METRIC aggregates=(\d+)\s+TBNET_TCP_METRIC rebuilt=(\d+)'
+                r'\s+TBNET_TCP_METRIC failures=(\d+)\s+TBNET_TCP_METRIC min_mss=(\d+)',
+                result.stdout):
+            keys = ('ipv', 'policy', 'route_mtu', 'success', 'sent', 'pmtu',
+                    'snd_mss', 'retrans', 'aggregates', 'rebuilt', 'failures', 'min_mss')
+            row = dict(zip(keys, match.groups()))
+            assert row['failures'] == '0' and int(row['aggregates']) > 0, row
+            if row['policy'] != 'auto':
+                assert row['success'] == '1', row
+            if row['policy'] == 'preserve':
+                assert row['rebuilt'] == '0' and row['pmtu'] == '1280', row
+                assert int(row['min_mss']) < 1280, row
+            else:
+                assert int(row['rebuilt']) > 0, row
+            sessions.append(row)
+            print('TCP observation:', row)
+        assert len(sessions) == 6, result.stdout[-10000:]
+        (build / ('tcp-' + kernel + '.json')).write_text(
+            json.dumps(sessions, indent=2) + '\n')
         summaries = re.findall(
             r'TBNET_ORDER SUMMARY cases=(\d+) reordered=(\d+) errors=(\d+) '
             r'header=(\d+) headroom=(\d+)', text)
@@ -250,7 +328,7 @@ done
         assert legacy[2:] == (0, 26, 0), legacy
         assert 'TBNET_ORDER ERROR' not in text, text[-6000:]
         print(f'GRO ordering: 256 corrected cases passed; legacy control reordered {legacy[1]}/256')
-        print('QEMU passed: 39 unit tests, 16 bridge/router cases, 80 MTU/PMTU observations, GRO ordering, driver load/unload')
+        print('QEMU passed: 39 unit tests, 16 bridge/router cases, 80 MTU/PMTU observations, 6 TCP sessions, GRO ordering, driver load/unload')
 
 if __name__ == '__main__':
     main()
