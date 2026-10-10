@@ -16,14 +16,16 @@ if test "${1:-}" = deps; then
     install_dependencies
     exit 0
 fi
-command -v dkms >/dev/null && command -v qemu-system-x86_64 >/dev/null || install_dependencies
+if ! command -v dkms >/dev/null || ! command -v qemu-system-x86_64 >/dev/null; then
+    install_dependencies
+fi
 mkdir -p build/upstream-kernel
 version=$(python3 -c 'import json; print(json.load(open("tests/kernels/stable.json"))["version"])')
 # A fixed location lets CI cache the built tree; DKMS needs it as /lib/modules/*/build.
 cache=/var/cache/tbnet-upstream-kernel
 tree=$cache/linux-$version
 # Reuse a tree only if it was completed from the same lock, config and compiler.
-inputs=$( (cat tests/kernels/stable.json tests/kernels/config; gcc --version | head -1) | sha256sum | cut -d ' ' -f 1)
+inputs=$( (cat tests/kernels/stable.json tests/kernels/config; gcc -dumpfullversion) | sha256sum | cut -d ' ' -f 1)
 if test -f "$tree/.tbnet-built" && test "$(cat "$tree/.tbnet-built")" = "$inputs"; then
     echo "Reusing the cached test kernel tree for Linux $version"
     cd "$tree"
