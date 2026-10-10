@@ -54,6 +54,7 @@ dkms install -m thunderbolt-net -v "$package_version" -k "$kernel"
 selected=$(modinfo -k "$kernel" -F filename thunderbolt_net)
 case "$selected" in */updates/dkms/*) ;; *) echo 'DKMS module was not selected'; exit 1;; esac
 test "$(modinfo -k "$kernel" -F version thunderbolt_net)" = "$package_version"
+bash scripts/check-throttling.sh "$kernel" "$selected" --require
 dkms remove -m thunderbolt-net -v "$package_version" --all
 test "$(modinfo -k "$kernel" -F filename thunderbolt_net)" = "$original"
 test "$(sha256sum "$original" | cut -d ' ' -f 1)" = "$original_hash"

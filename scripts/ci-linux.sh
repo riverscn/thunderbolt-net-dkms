@@ -50,6 +50,7 @@ dkms install -m thunderbolt-net -v "$version" -k "$kernel"
 selected=$(modinfo -k "$kernel" -F filename thunderbolt_net)
 case "$selected" in */updates/dkms/*) ;; *) echo "DKMS override not selected: $selected" >&2; exit 1 ;; esac
 test "$(modinfo -k "$kernel" -F version thunderbolt_net)" = "$version"
+bash scripts/check-throttling.sh "$kernel" "$selected"
 test -z "$(find /lib/modules/"$kernel" -name 'tbnet_*test.ko*' -print -quit)"
 dpkg --purge thunderbolt-net-dkms
 restored=$(modinfo -k "$kernel" -F filename thunderbolt_net)

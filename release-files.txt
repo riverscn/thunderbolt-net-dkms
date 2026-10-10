@@ -39,6 +39,7 @@ packaging/thunderbolt-net-rx.conf.example
 release-files.txt
 scripts/audit-deb.py
 scripts/check-source.py
+scripts/check-throttling.sh
 scripts/ci-linux.sh
 scripts/ci-upstream.sh
 scripts/hw-test.py
