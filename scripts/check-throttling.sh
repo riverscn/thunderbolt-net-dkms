@@ -24,7 +24,9 @@ case "$module" in
     *) cp "$module" "$tmp/m.ko" ;;
 esac
 actual=no
-if nm -u "$tmp/m.ko" | grep -qw tb_ring_throttling; then
+# Capture first: under pipefail, grep -q exiting early can SIGPIPE nm.
+undefined=$(nm -u "$tmp/m.ko")
+if grep -qw tb_ring_throttling <<< "$undefined"; then
     actual=yes
 fi
 echo "ring throttling for $kernel: kernel API $expected, module uses $actual"
