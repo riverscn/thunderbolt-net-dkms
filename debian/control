@@ -2,7 +2,7 @@ Source: thunderbolt-net
 Section: kernel
 Priority: optional
 Maintainer: Shun Li <riverscn@gmail.com>
-Build-Depends: debhelper-compat (= 13), dh-sequence-dkms, python3
+Build-Depends: debhelper-compat (= 13), dh-sequence-dkms, python3, git
 Standards-Version: 4.7.2
 Rules-Requires-Root: no
 

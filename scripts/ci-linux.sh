@@ -6,7 +6,7 @@ cd "$(dirname "$0")/.."
 export DEBIAN_FRONTEND=noninteractive
 apt-get -o Acquire::http::Timeout=30 -o Acquire::Retries=3 update -qq
 apt-get -o Acquire::http::Timeout=30 -o Acquire::Retries=3 install -y --no-install-recommends build-essential debhelper dh-dkms dkms \
-    python3 python3-yaml lintian shellcheck kmod busybox-static iproute2 \
+    python3 python3-yaml git lintian shellcheck kmod busybox-static iproute2 \
     qemu-system-x86 cpio zstd xz-utils ca-certificates
 # shellcheck source=/dev/null
 . /etc/os-release

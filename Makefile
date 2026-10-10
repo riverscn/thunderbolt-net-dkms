@@ -12,6 +12,7 @@ test-modules:
 clean:
 	@if test -d "$(KDIR)"; then $(MAKE) -C "$(KDIR)" M="$(MODULE_DIR)" clean; fi
 check:
+	python3 scripts/upstream.py verify
 	python3 scripts/check-source.py
 	python3 -m unittest discover -s tests -v
 dist:

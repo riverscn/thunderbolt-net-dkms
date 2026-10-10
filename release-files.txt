@@ -1,4 +1,5 @@
 .editorconfig
+.gitattributes
 .github/ISSUE_TEMPLATE/bug.yml
 .github/dependabot.yml
 .github/pull_request_template.md
@@ -32,6 +33,7 @@ docs/releasing.md
 docs/roadmap.md
 docs/rx-page-pool.md
 docs/testing.md
+docs/upstream-tracking.md
 docs/validation.md
 packaging/thunderbolt-net-page-pool.conf.example
 packaging/thunderbolt-net-rx.conf.example
@@ -39,11 +41,14 @@ release-files.txt
 scripts/audit-deb.py
 scripts/check-source.py
 scripts/ci-linux.sh
+scripts/ci-upstream.sh
 scripts/make-dist.py
 scripts/privacy.py
 scripts/qemu-test.py
 scripts/release-notes.py
+scripts/upstream.py
 src/Makefile
+src/compat.h
 src/main.c
 src/rx_fixup.c
 src/rx_fixup.h
@@ -55,6 +60,8 @@ src/tests/test_path.c
 src/tests/test_rx.c
 src/trace.c
 src/trace.h
+tests/kernels/config
+tests/kernels/stable.json
 tests/rx-lifecycle/Makefile
 tests/rx-lifecycle/README.md
 tests/rx-lifecycle/build-kernels.py
@@ -66,6 +73,16 @@ tests/rx-lifecycle/run.py
 tests/rx-lifecycle/sanity.c
 tests/rx-lifecycle/tested-functions.json
 tests/test_release.py
+tests/test_upstream.py
+upstream/commits/1881f2efbf7f78dc0a79a387b29fde6ff56d3731.patch
+upstream/commits/1c361f6cf39be7cc0ce37c0b67bd1cdf74b0a0c1.patch
+upstream/commits/21c0a41260e4b799a89ef34ae1b67261cbbcdfb1.patch
+upstream/commits/5140737c592d23b4de0f98c47dd347684a0c8de3.patch
+upstream/commits/55d9895f89970501fe126d1026b586b04a224c27.patch
+upstream/commits/68bf02b6b4ad3f748c6db71fd77b6c0402d252f4.patch
+upstream/commits/c51777370ac2ef435401340e205ef1d0c778df28.patch
+upstream/commits/d6c0af293129345a17dc31c9b4179dc7f3d6af7a.patch
+upstream/local.patch
 upstream/main.c
 upstream/provenance.json
 upstream/trace.c
