@@ -145,18 +145,47 @@ $IP link set tbsink0 nomaster
 $IP link del brtest
 $IP addr add 192.0.2.1/24 dev tbtest0
 $IP addr add 198.51.100.1/24 dev tbsink0
+$IP neigh add 192.0.2.10 lladdr 04:00:00:00:00:00 nud permanent dev tbtest0
 $IP neigh add 198.51.100.20 lladdr 02:00:00:00:00:09 nud permanent dev tbsink0
 $IP -6 addr add 2001:db8:1::1/64 dev tbtest0 nodad
 $IP -6 addr add 2001:db8:2::1/64 dev tbsink0 nodad
+$IP -6 neigh add 2001:db8:1::10 lladdr 04:00:00:00:00:00 nud permanent dev tbtest0
 $IP -6 neigh add 2001:db8:2::20 lladdr 02:00:00:00:00:09 nud permanent dev tbsink0
 echo 0 > /proc/sys/net/ipv4/conf/all/rp_filter
 echo 0 > /proc/sys/net/ipv4/conf/tbtest0/rp_filter
 echo 1 > /proc/sys/net/ipv4/ip_forward
 echo 1 > /proc/sys/net/ipv6/conf/all/forwarding
+# Disable ICMP rate limits only inside this disposable guest.
+echo 0 > /proc/sys/net/ipv4/icmp_ratelimit
+echo 0 > /proc/sys/net/ipv4/icmp_ratemask
+echo 0 > /proc/sys/net/ipv6/icmp/ratelimit
 for n in 1 2 3 4 5 6 7 8; do
  echo "$n" > /sys/module/tbnet_path_test/parameters/trigger
 done
 mtu_matrix
+# Both devices stay jumbo while the FIB route imposes the smaller limit.
+$IP link set tbtest0 mtu 9000
+$IP link set tbsink0 mtu 9000
+echo Y > /sys/module/tbnet_path_test/parameters/mtu_probe
+for limit in 1500 1280; do
+ $IP route replace 198.51.100.20/32 dev tbsink0 mtu "$limit"
+ $IP -6 route replace 2001:db8:2::20/128 dev tbsink0 mtu "$limit"
+ echo "$limit" > /sys/module/tbnet_path_test/parameters/route_limit
+ for cap in 0 1500 1280; do
+  echo "$cap" > /sys/module/tbnet_path_test/parameters/mtu_cap
+  for n in 2 4 6 8; do
+   echo "$n" > /sys/module/tbnet_path_test/parameters/trigger
+  done
+ done
+ # A small wire-shaped packet control, not a TCP socket/PMTUD session.
+ echo 0 > /sys/module/tbnet_path_test/parameters/mtu_cap
+ echo 1200 > /sys/module/tbnet_path_test/parameters/probe_payload
+ for n in 2 4 6 8; do
+  echo "$n" > /sys/module/tbnet_path_test/parameters/trigger
+ done
+ echo 20001 > /sys/module/tbnet_path_test/parameters/probe_payload
+done
+echo N > /sys/module/tbnet_path_test/parameters/mtu_probe
 '''
         init += '''for legacy in 0 1; do
  $B insmod /tbnet_order_test.ko legacy_header=$legacy
@@ -188,15 +217,22 @@ done
         assert len(re.findall(r'TBNET_PATH PASS ', text)) == 16, text[-6000:]
         assert not re.search(r'TBNET_PATH FAIL|BUG:|WARNING:|UBSAN:|Oops:|Call Trace:', text), text[-6000:]
         mtu_lines = re.findall(r'^.*TBNET_MTU (.*)$', text, re.MULTILINE)
-        assert len(mtu_lines) == 48, (len(mtu_lines), text[-8000:])
+        assert len(mtu_lines) == 80, (len(mtu_lines), text[-8000:])
         observations = [dict(field.split('=') for field in line.split())
                         for line in mtu_lines]
         for row in observations:
-            if int(row['effective']) <= int(row['egress']):
+            limit = min(int(row['egress']), int(row['route_limit']) or int(row['egress']))
+            packet_size = int(row['payload']) + (40 if row['ipv'] == '4' else 60)
+            safe = min(int(row['effective']), packet_size) <= limit
+            if safe:
                 assert row['valid'] == '1' and row['oversized'] == '0', row
+                assert int(row['max_ip_len']) <= limit, row
+                assert row['feedback'] == '0', row
+            elif row['topology'] == 'route':
+                assert row['received'] == '0', row
+                assert int(row['feedback']) > 0 and int(row['feedback_mtu']) == limit, row
+                assert row['quote_ok'] == row['feedback'], row
             else:
-                # Record the failure mode; never count oversized output as
-                # successful forwarding merely because the sink accepted it.
                 assert row['received'] == '0' or row['valid'] == '1', row
         (build / ('mtu-' + kernel + '.json')).write_text(
             json.dumps(observations, indent=2) + '\n')
@@ -214,7 +250,7 @@ done
         assert legacy[2:] == (0, 26, 0), legacy
         assert 'TBNET_ORDER ERROR' not in text, text[-6000:]
         print(f'GRO ordering: 256 corrected cases passed; legacy control reordered {legacy[1]}/256')
-        print('QEMU passed: 39 unit tests, 16 bridge/router cases, 48 MTU observations, GRO ordering, driver load/unload')
+        print('QEMU passed: 39 unit tests, 16 bridge/router cases, 80 MTU/PMTU observations, GRO ordering, driver load/unload')
 
 if __name__ == '__main__':
     main()

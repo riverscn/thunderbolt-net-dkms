@@ -7,6 +7,8 @@
 #include "test_rx.c"
 #include <linux/delay.h>
 #include <linux/rtnetlink.h>
+#include <linux/icmp.h>
+#include <linux/icmpv6.h>
 
 static struct net_device *sink;
 static DEFINE_SPINLOCK(capture_lock);
@@ -15,8 +17,13 @@ static bool capturing;
 static int trigger;
 static bool mtu_probe;
 static unsigned int mtu_cap = 1500;
+static unsigned int route_limit, probe_payload = 20001;
+static unsigned int feedback_count, feedback_mtu, feedback_quote_ok;
 module_param(mtu_probe, bool, 0600);
 module_param(mtu_cap, uint, 0600);
+/* route_limit labels the route configured by the guest script; not a policy. */
+module_param(route_limit, uint, 0600);
+module_param(probe_payload, uint, 0600);
 static struct napi_struct test_napi;
 static struct sk_buff_head rx_queue;
 
@@ -62,6 +69,52 @@ static netdev_tx_t sink_xmit(struct sk_buff *skb, struct net_device *dev)
 
 static netdev_tx_t input_xmit(struct sk_buff *skb, struct net_device *dev)
 {
+	unsigned int off = skb_network_offset(skb), mtu = 0;
+	bool quote_ok = false;
+	__be32 ports_seq[2];
+
+	if (skb->protocol == htons(ETH_P_IP)) {
+		struct iphdr ip, quoted;
+		struct icmphdr icmp;
+
+		if (!skb_copy_bits(skb, off, &ip, sizeof(ip)) && ip.ihl >= 5 &&
+		    ip.protocol == IPPROTO_ICMP &&
+		    !skb_copy_bits(skb, off + ip.ihl * 4, &icmp, sizeof(icmp)) &&
+		    icmp.type == ICMP_DEST_UNREACH && icmp.code == ICMP_FRAG_NEEDED) {
+			mtu = ntohs(icmp.un.frag.mtu);
+			off += ip.ihl * 4 + sizeof(icmp);
+			if (!skb_copy_bits(skb, off, &quoted, sizeof(quoted)) &&
+			    quoted.ihl >= 5 && quoted.protocol == IPPROTO_TCP &&
+			    !skb_copy_bits(skb, off + quoted.ihl * 4,
+					   ports_seq, sizeof(ports_seq)))
+				quote_ok = ntohl(ports_seq[0]) == (54321U << 16 | 5001) &&
+					   ntohl(ports_seq[1]) == 0xfffff000U;
+		}
+	} else if (skb->protocol == htons(ETH_P_IPV6)) {
+		struct ipv6hdr ip, quoted;
+		struct icmp6hdr icmp;
+
+		if (!skb_copy_bits(skb, off, &ip, sizeof(ip)) &&
+		    ip.nexthdr == IPPROTO_ICMPV6 &&
+		    !skb_copy_bits(skb, off + sizeof(ip), &icmp, sizeof(icmp)) &&
+		    icmp.icmp6_type == ICMPV6_PKT_TOOBIG && !icmp.icmp6_code) {
+			mtu = ntohl(icmp.icmp6_mtu);
+			off += sizeof(ip) + sizeof(icmp);
+			if (!skb_copy_bits(skb, off, &quoted, sizeof(quoted)) &&
+			    quoted.nexthdr == IPPROTO_TCP &&
+			    !skb_copy_bits(skb, off + sizeof(quoted),
+					   ports_seq, sizeof(ports_seq)))
+				quote_ok = ntohl(ports_seq[0]) == (54321U << 16 | 5001) &&
+					   ntohl(ports_seq[1]) == 0xfffff000U;
+		}
+	}
+	spin_lock_bh(&capture_lock);
+	if (capturing && mtu) {
+		feedback_count++;
+		feedback_mtu = mtu;
+		feedback_quote_ok += quote_ok;
+	}
+	spin_unlock_bh(&capture_lock);
 	dev_kfree_skb(skb);
 	return NETDEV_TX_OK;
 }
@@ -74,7 +127,7 @@ static int run_path(const char *value, const struct kernel_param *kp)
 	struct fixture f = { .payload = 20001, .mtu = 1500, .nonlinear = true };
 	struct sk_buff *skb, *next, *list;
 	unsigned int packets = 0, max_ip_len = 0, oversized = 0;
-	unsigned int ingress, egress;
+	unsigned int ingress, egress, replies, reported_mtu, quoted_ok;
 	bool fix, ok, gro;
 	int v, err = kstrtoint(value, 0, &v);
 
@@ -87,8 +140,12 @@ static int run_path(const char *value, const struct kernel_param *kp)
 		v -= 4;
 	fix = !(v & 1);
 	f.v6 = v > 2;
-	if (mtu_probe)
+	if (mtu_probe) {
+		if (!probe_payload || probe_payload > 64000)
+			return -EINVAL;
 		f.mtu = tbnet_rx_effective_mtu(testdev, mtu_cap);
+		f.payload = probe_payload;
+	}
 	skb = make_packet(&f);
 	if (!skb)
 		return -ENOMEM;
@@ -97,6 +154,7 @@ static int run_path(const char *value, const struct kernel_param *kp)
 	spin_lock_bh(&capture_lock);
 	captured = NULL;
 	captured_tail = &captured;
+	feedback_count = feedback_mtu = feedback_quote_ok = 0;
 	capturing = true;
 	spin_unlock_bh(&capture_lock);
 	local_bh_disable();
@@ -122,6 +180,9 @@ static int run_path(const char *value, const struct kernel_param *kp)
 	capturing = false;
 	list = captured;
 	captured = NULL;
+	replies = feedback_count;
+	reported_mtu = feedback_mtu;
+	quoted_ok = feedback_quote_ok;
 	spin_unlock_bh(&capture_lock);
 	for (skb = list; skb; skb = skb->next) {
 		unsigned int len = skb->len > ETH_HLEN ? skb->len - ETH_HLEN : 0;
@@ -135,10 +196,11 @@ static int run_path(const char *value, const struct kernel_param *kp)
 		/* The software sink accepts oversized frames so they are visible.
 		 * Payload validity does not imply the output fits its declared MTU.
 		 */
-		pr_info("TBNET_MTU topology=%s ipv=%d gro=%d ingress=%u egress=%u cap=%u effective=%u received=%u max_ip_len=%u oversized=%u valid=%d\n",
+		pr_info("TBNET_MTU topology=%s ipv=%d gro=%d ingress=%u egress=%u cap=%u effective=%u received=%u max_ip_len=%u oversized=%u valid=%d route_limit=%u payload=%u feedback=%u feedback_mtu=%u quote_ok=%u\n",
 			netif_is_bridge_port(testdev) ? "bridge" : "route",
 			f.v6 ? 6 : 4, gro, ingress, egress, mtu_cap, f.mtu,
-			packets, max_ip_len, oversized, list && validate(list, &f));
+			packets, max_ip_len, oversized, list && validate(list, &f),
+			route_limit, f.payload, replies, reported_mtu, quoted_ok);
 		kfree_skb_list(list);
 		trigger = v;
 		return 0;
