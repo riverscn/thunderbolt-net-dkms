@@ -305,6 +305,7 @@ static unsigned int run_core_checks(void)
 			.nonlinear = true, .timestamp = true,
 			.v6 = n & 1, .tags = (n & 2) ? 2 : 0 };
 		struct sk_buff *skb = make_packet(&f), *copy = NULL, *segs = NULL;
+		struct sk_buff *deep = NULL;
 		unsigned int old_mss = 9000 - (f.v6 ? 40 : 20) - 32;
 		unsigned int new_mss = 1280 - (f.v6 ? 40 : 20) - 32;
 		bool ok = false;
@@ -316,6 +317,11 @@ static unsigned int run_core_checks(void)
 			skb = NULL;
 			goto result;
 		}
+		deep = skb_copy(skb, GFP_KERNEL);
+		if (!deep || !(skb_shinfo(deep)->flags & SKBFL_RX_GSO_MTU) ||
+		    skb_rx_gso_clamp_mtu(deep, 1280) ||
+		    skb_shinfo(deep)->gso_size != new_mss)
+			goto result;
 		copy = skb_clone(skb, GFP_KERNEL);
 		if (!copy || skb_rx_gso_clamp_mtu(copy, 1280))
 			goto result;
@@ -335,6 +341,7 @@ static unsigned int run_core_checks(void)
 result:
 		if (!IS_ERR_OR_NULL(segs))
 			kfree_skb_list(segs);
+		kfree_skb(deep);
 		kfree_skb(copy);
 		kfree_skb(skb);
 		bad += !ok;

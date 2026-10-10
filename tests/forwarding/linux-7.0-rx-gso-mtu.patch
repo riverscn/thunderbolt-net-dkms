@@ -138,3 +138,13 @@
  	if (!is_skb_forwardable(skb->dev, skb))
  		goto drop;
  
+--- a/net/core/skbuff.c
++++ b/net/core/skbuff.c
+@@ -2148,6 +2148,7 @@
+ 	skb_shinfo(new)->gso_size = skb_shinfo(old)->gso_size;
+ 	skb_shinfo(new)->gso_segs = skb_shinfo(old)->gso_segs;
+ 	skb_shinfo(new)->gso_type = skb_shinfo(old)->gso_type;
++	skb_shinfo(new)->flags |= skb_shinfo(old)->flags & SKBFL_RX_GSO_MTU;
+ }
+ EXPORT_SYMBOL(skb_copy_header);
+ 
