@@ -121,7 +121,7 @@ To activate the configuration, reload from a local console or a separate
 management connection, or reboot:
 
 ```sh
-sudo modprobe -r thunderbolt_net
+sudo rmmod thunderbolt_net
 sudo modprobe thunderbolt_net
 cat /sys/module/thunderbolt_net/version
 cat /sys/module/thunderbolt_net/parameters/rx_segment
@@ -131,10 +131,18 @@ ethtool -S thunderbolt0
 ```
 
 Expected: module version `0.3.0`, then `Y`, `1500` and `Y`, and normalization
-counters increase under suitable traffic. Interface names can differ. An unload
-failure must be investigated; never force-remove a busy module. Reloading
-interrupts Thunderbolt networking, and peer negotiation may take time. Keep the
-console available until addressing and connectivity have returned.
+counters increase under suitable traffic. Interface names can differ.
+
+Use `rmmod`, not `modprobe -r`. Removing the network driver with modprobe also
+unloads the Thunderbolt core module `thunderbolt` once nothing else uses it.
+That drops the USB4 link, and the peer may not reconnect until the cable is
+replugged. `rmmod` unloads only the network driver, so the link stays up and
+carrier normally returns within a few seconds after `modprobe`.
+
+An unload failure must be investigated; never force-remove a busy module.
+Reloading interrupts Thunderbolt networking, and peer negotiation may take
+time. Keep the console available until addressing and connectivity have
+returned.
 
 If the module is included in an initramfs, update that image after installing,
 upgrading or removing the package or changing the configuration. On
