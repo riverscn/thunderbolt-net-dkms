@@ -137,10 +137,21 @@ Expected: module version `0.3.0`, then `Y`, `1500` and `Y`, and normalization
 counters increase under suitable traffic. Interface names can differ.
 
 Use `rmmod`, not `modprobe -r`. Removing the network driver with modprobe also
-unloads the Thunderbolt core module `thunderbolt` once nothing else uses it.
-That drops the USB4 link, and the peer may not reconnect until the cable is
-replugged. `rmmod` unloads only the network driver, so the link stays up and
-carrier normally returns within a few seconds after `modprobe`.
+unloads the Thunderbolt core module `thunderbolt` once nothing else uses it,
+and the core **resets the host router** when it loads again (its `host_reset`
+option, on by default). On the test host every USB4 link loss followed such a
+reset: the Type-C side stayed at CC level without re-entering USB4, cable
+replugs did not reliably recover it (once on the second replug, once not after
+three), and the link came back by itself after 15–25 minutes. `rmmod` unloads
+only the network driver, so the link stays up and carrier normally returns
+within a few seconds after `modprobe`.
+
+If the core module must be reloaded anyway, load it with
+`sudo modprobe thunderbolt host_reset=0`. Without the reset, the peer was
+re-enumerated about 90–110 seconds after the core loaded, with no replug, in
+three transitions on the same host. This is an observation on one Intel
+Raptor Lake-P host with a macOS peer; the firmware behaviour behind it is not
+established.
 
 The two `systemctl` lines apply to Debian and Proxmox hosts whose
 `/etc/network/interfaces` brings the port up through ifupdown hotplug

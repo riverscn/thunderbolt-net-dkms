@@ -82,6 +82,14 @@ fault or timeout. Physical disconnect testing requires a cable operator and an
 independent console/recovery path. Never load intentional sanitizer controls
 onto the hardware host.
 
+Do not reload the Thunderbolt core module during a test session unless the
+test requires it: its default host-router reset dropped the USB4 link on the
+test host for 15–25 minutes regardless of replugs. When the controller is
+passed through to a VM, load the core there with `host_reset=0` before
+hot-adding the device, and keep the host's core loaded with `host_reset=0` for
+the return; the peer then re-enumerated in about 90–110 seconds without a
+replug. See [installation](installation.md#default-configuration).
+
 ## Hardware test helper
 
 `scripts/hw-test.py` automates the throughput part of this procedure on the
