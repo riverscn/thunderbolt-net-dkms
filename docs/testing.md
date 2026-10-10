@@ -83,14 +83,17 @@ kernel log can be checked). It does not install packages or switch DKMS
 versions; install the build under test first. Keep the host's default route
 off the Thunderbolt interface: reloading the module drops that link.
 
-On the Mac, start `iperf3 -s`. On the Linux host:
+On the Mac, find the Thunderbolt Bridge address (usually
+`ipconfig getifaddr bridge0`) and start `iperf3 -s`. On the Linux host, set
+that address once in the shell, then run the steps in the same shell:
 
 ```sh
-sudo python3 scripts/hw-test.py info --peer MAC_ADDRESS
-sudo python3 scripts/hw-test.py reload --peer MAC_ADDRESS --param rx_segment=1
-sudo python3 scripts/hw-test.py run --peer MAC_ADDRESS --phase v0.2.0
+PEER=198.51.100.2   # replace with the Mac's Thunderbolt Bridge IP address
+sudo python3 scripts/hw-test.py info --peer "$PEER"
+sudo python3 scripts/hw-test.py reload --peer "$PEER" --param rx_segment=1
+sudo python3 scripts/hw-test.py run --peer "$PEER" --phase v0.2.0
 # install the candidate package, then repeat with a new phase label
-sudo python3 scripts/hw-test.py run --peer MAC_ADDRESS --phase candidate
+sudo python3 scripts/hw-test.py run --peer "$PEER" --phase candidate
 sudo python3 scripts/hw-test.py summary
 ```
 
