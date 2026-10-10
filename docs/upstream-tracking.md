@@ -9,16 +9,15 @@ This is development work, not a new published release or a change to v0.2.0.
 
 - `upstream/`: unmodified `main.c`, `trace.c` and `trace.h`, with immutable URLs,
   SHA-256 digests and attribution in `provenance.json`.
-- `upstream/commits/`: byte-for-byte original upstream mail patches, including
-  changes outside this DKMS module, with SHA-256 digests in `provenance.json`.
-  Original authors, author dates, full messages and sign-offs are retained in
-  individual Git imports. `Upstream-commit` records each original full SHA;
-  `Import-scope` states the path mapping and excluded controller/header scope.
+- Git history: each upstream import retains its original author, author date,
+  full message and sign-offs. `Upstream-commit` identifies the original commit;
+  `Import-scope` records the path mapping and excluded controller/header scope.
+  `provenance.json` lists the imported SHAs. No patch-file archive is maintained.
 - `src/`: the maintained driver, including our separate RX implementation.
   Local integration and compatibility changes are separate commits.
-- `upstream/local.patch`: the exact local delta for those three upstream files.
-  `make check` replays it in a temporary directory and compares the result with
-  `src/`. It must be refreshed deliberately after reviewing changes.
+- `upstream.py diff`: derives the local delta from `upstream/` and `src/` on
+  demand. `make check` replays this derived delta in a temporary directory;
+  normal compilation and offline checks do not need a Linux Git clone.
 - `tests/kernels/stable.json`: the exact upstream kernel archive and checksum
   used for compatibility CI. Updating driver files does not update this lock,
   the DKMS version gate, or the host's Thunderbolt controller driver.
@@ -50,65 +49,72 @@ or Arch DKMS lifecycle gate yet.
 
 ## Check and prepare an update
 
-Python 3, Git and outbound HTTPS are needed for discovery/preparation. Normal
-DKMS compilation never downloads source. Run from the project root:
+Maintain a separate trusted Linux stable Git clone. Fetch the desired tag and
+history there; never add the full Linux history to this small DKMS repository.
+For example (initial cloning may take time):
 
 ```sh
+git clone --filter=blob:none --no-checkout \
+  https://github.com/gregkh/linux.git ../linux-upstream
+git -C ../linux-upstream fetch origin tag v7.2.9
 python3 scripts/upstream.py status
-python3 scripts/upstream.py prepare --tag v7.2.9 --output build/candidate-v7.2.9
+python3 scripts/upstream.py prepare --linux-tree ../linux-upstream \
+  --tag v7.2.9 --output build/upstream-candidate
 ```
 
-The second command checks the unchanged current baseline. For a new release,
-select its original upstream commits in dependency order and pass each full SHA:
+The example checks the current baseline. Select a newly reviewed stable tag
+for an update. The tool resolves it from the **local Git repository**, verifies
+that its old commit tree matches the checked-in baseline, and enumerates
+relevant commits in topological order. It reads original author, date, message
+and changes from Git objects. For path mapping it streams `git format-patch`
+into `git am` internally; no patch files are downloaded or stored. Partial
+clones may fetch missing objects on demand; complete clones work offline.
+
+For a divergent stable-to-mainline transition, review the original history and
+supply full commit SHAs explicitly in application order:
 
 ```sh
-python3 scripts/upstream.py prepare --tag <stable-tag> \
-  --commit <first-full-upstream-sha> --commit <next-full-upstream-sha> \
+python3 scripts/upstream.py prepare --linux-tree ../linux-upstream \
+  --tag <stable-tag> --commit <first-full-sha> --commit <next-full-sha> \
   --output build/upstream-candidate
 ```
 
-The tool downloads the **original commit mail patches**, then uses `git am` in a
-separate candidate Git repository. Only diff path names are remapped from
-`drivers/net/thunderbolt/` to `upstream/`; code hunks and original author/message
-information are not rewritten. Raw patches are archived unchanged. A fresh
-endpoint download is used only to verify that the selected series reproduces
-the target baseline exactly. Missing commits cannot be hidden by replacing
-files with a downloaded snapshot. Nonlinear stable-to-mainline transitions or
-already-backported fixes can conflict and need explicit review.
+Shallow repositories need enough history, including commit parents. Merge
+commits cannot be imported as ordinary commits; merge-only changes or a missing
+commit cause the final tree comparison to fail. The selected series must
+reproduce the target Git tree byte for byte. The tool does not silently replace
+files with a snapshot or guess equivalence of backported commits.
 
-Output must not already exist. A failed upstream application leaves the
-candidate's `git am` state for inspection. After successful imports, local
-changes are three-way merged into candidate `src/`; conflicts remain there and
-produce a nonzero exit. The existing checkout is never overwritten. Neither
-clean application nor identical final bytes proves semantic compatibility.
+The candidate is a separate Git repository and its output path must not exist.
+A failed application leaves `git am` state there. After imports, the tool
+three-way merges the local changes into candidate `src/`, retaining conflicts
+for review. It never writes into the original checkout or changes the Linux
+clone's refs. Identical final bytes are not proof of semantic compatibility.
 
-`review.json` records `import_base` and `import_head`. Transfer that range with
-`git format-patch` and `git am` so the individual authors and messages survive;
-**do not copy the final upstream files and squash them into your own commit**:
+`review.json` records `import_base` and `import_head`. Transfer these individual
+commits through Git (replace the placeholders with the recorded SHAs):
 
 ```sh
-git -C build/upstream-candidate format-patch --stdout \
-  <import_base>..<import_head> > build/upstream-imports.mbox
-git am build/upstream-imports.mbox
+git fetch ./build/upstream-candidate HEAD
+git cherry-pick <import_base>..<import_head>
 ```
 
-Review controller dependencies and the carried historical attribution. Commit
-candidate `upstream/commits/` and `upstream/provenance.json` as maintenance
-metadata. Resolve and integrate candidate `src/` in separate local commits;
-review/update extracted RX fingerprints when functions change, then regenerate
-the local delta and update the release allowlist:
+Commit the candidate provenance metadata separately. Review controller
+requirements, integrate candidate `src/` in local commits, update lifecycle
+fingerprints when functions change, then inspect the derived delta and test:
 
 ```sh
-python3 scripts/upstream.py refresh
+python3 scripts/upstream.py diff
 make check
 ```
 
-Imported commit IDs in this repository necessarily differ because their parent
-trees and paths differ. `Upstream-commit`, the unchanged raw mail and its digest
-preserve the original identity and attribution. Controller and header hunks in
-cross-subsystem commits remain in the host kernel, not in the DKMS payload; the
-complete archived patch makes that dependency visible. Preserve these import
-commits when merging a PR; do not squash away the upstream authorship.
+Local import IDs differ because parent trees and paths differ. `Upstream-commit`
+and the source repository identify the original full commit for `git show`,
+including controller/header hunks excluded from the DKMS module. Those changes
+remain a host-kernel dependency, with old-kernel compatibility handled locally.
+Preserve the individual import commits when merging; do not squash away their
+authorship. Treat source-import, compatibility, test and documentation changes
+as separate reviewable commits.
 
 Update the kernel lock from the official release and its published checksum,
 and adjust the version gate only with matching-header test evidence. Keep

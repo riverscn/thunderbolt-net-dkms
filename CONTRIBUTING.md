@@ -23,7 +23,7 @@ contributor license agreement or private telemetry is required.
 
 For sensitive security findings, follow [SECURITY.md](SECURITY.md).
 
-Preserve upstream changes as individual imports from original commit mail patches,
+Preserve upstream changes as individual imports from original Linux Git commits,
 including author, author date, complete message and `Upstream-commit` SHA. Keep
 local compatibility/integration commits separate; do not squash these imports.
 See [upstream maintenance](docs/upstream-tracking.md) for preparation and replay.
