@@ -60,9 +60,43 @@ modinfo -n thunderbolt_net
 安装过程不请求重载正在使用的网卡。`modinfo` 显示的是磁盘上的模块，不能单靠
 它确认内存中正在运行的模块已经切换。
 
-阅读 [安装与回退说明](docs/installation.md) 后，将示例配置安装到
-`/etc/modprobe.d/thunderbolt-net-rx.conf`，下次加载模块时生效。只在控制台或独立
-管理链路上重载 `thunderbolt_net`，因为这会中断雷电连接。
+两个可选配置文件可以同时放在 `/etc/modprobe.d/` 中：
+
+| 文件 | 参数 | 用途 |
+| --- | --- | --- |
+| `thunderbolt-net-rx.conf` | `rx_segment=1 rx_segment_mtu=1500` | macOS TSO 转发修正 |
+| `thunderbolt-net-page-pool.conf` | `rx_page_pool=1` | RX 页面回收优化 |
+
+它们都配置 `thunderbolt_net`，`modprobe` 会合并不同的参数，第二个文件不会覆盖
+第一个。可以分别启用；如需同时启用，阅读 [安装与回退说明](docs/installation.md) 后执行：
+
+```sh
+sudo install -m 644 \
+  /usr/share/doc/thunderbolt-net-dkms/examples/thunderbolt-net-rx.conf.example \
+  /etc/modprobe.d/thunderbolt-net-rx.conf
+sudo install -m 644 \
+  /usr/share/doc/thunderbolt-net-dkms/examples/thunderbolt-net-page-pool.conf.example \
+  /etc/modprobe.d/thunderbolt-net-page-pool.conf
+```
+
+以上示例由 `.deb` 安装；源码仓库中也可以在 `packaging/` 找到。两个文件一起使用
+等价于在一个配置文件中写入：
+
+```conf
+options thunderbolt_net rx_segment=1 rx_segment_mtu=1500 rx_page_pool=1
+```
+
+选择一种布局即可，避免重复或冲突地设置同一参数。分文件便于单独关闭页面回收。
+配置在下次加载模块时生效；若涉及 initramfs，应先更新它。只在控制台或独立管理
+链路上重载，因为这会中断雷电连接。重载或重启后检查实际参数：
+
+```sh
+cat /sys/module/thunderbolt_net/parameters/rx_segment
+cat /sys/module/thunderbolt_net/parameters/rx_segment_mtu
+cat /sys/module/thunderbolt_net/parameters/rx_page_pool
+```
+
+同时启用两个示例时，结果应依次为 `Y`、`1500`、`Y`。
 
 ## 构建与发布
 

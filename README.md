@@ -67,17 +67,46 @@ does not request an active module reload. The currently loaded module stays in
 memory until it is unloaded or the system reboots; `modinfo` describes the module
 on disk, not necessarily the one currently running.
 
-To enable the workaround on the next module load, after reviewing the
-[installation and rollback guide](docs/installation.md):
+The two optional configuration files can coexist in `/etc/modprobe.d/`:
+
+| File | Parameters | Purpose |
+| --- | --- | --- |
+| `thunderbolt-net-rx.conf` | `rx_segment=1 rx_segment_mtu=1500` | macOS TSO forwarding workaround |
+| `thunderbolt-net-page-pool.conf` | `rx_page_pool=1` | RX page recycling optimization |
+
+Both target `thunderbolt_net`. `modprobe` combines their distinct options; the
+second file does not replace the first. Install either independently, or both
+as shown below after reviewing the [installation guide](docs/installation.md):
 
 ```sh
-sudo install -m 644 packaging/thunderbolt-net-rx.conf.example \
+sudo install -m 644 \
+  /usr/share/doc/thunderbolt-net-dkms/examples/thunderbolt-net-rx.conf.example \
   /etc/modprobe.d/thunderbolt-net-rx.conf
+sudo install -m 644 \
+  /usr/share/doc/thunderbolt-net-dkms/examples/thunderbolt-net-page-pool.conf.example \
+  /etc/modprobe.d/thunderbolt-net-page-pool.conf
 ```
 
-Reload only from a console or independent management connection; it interrupts
-Thunderbolt networking. The guide covers Secure Boot, initramfs and recovery.
-The example is also installed under `/usr/share/doc/thunderbolt-net-dkms/examples/`.
+These paths are provided by the `.deb`; source checkouts also contain the
+examples under `packaging/`. Both files together are equivalent to:
+
+```conf
+options thunderbolt_net rx_segment=1 rx_segment_mtu=1500 rx_page_pool=1
+```
+
+Use either layout, avoiding duplicate or conflicting definitions of the same
+parameter. Separate files make it easy to disable page recycling independently.
+Changes apply on the next module load. Refresh an affected initramfs first;
+reload only from a console or independent management connection, since it
+interrupts Thunderbolt networking. After reloading or rebooting, verify:
+
+```sh
+cat /sys/module/thunderbolt_net/parameters/rx_segment
+cat /sys/module/thunderbolt_net/parameters/rx_segment_mtu
+cat /sys/module/thunderbolt_net/parameters/rx_page_pool
+```
+
+With both examples enabled, expect `Y`, `1500`, and `Y`, respectively.
 
 ## Build
 

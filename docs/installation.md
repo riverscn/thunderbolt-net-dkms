@@ -129,6 +129,19 @@ sudo install -m 644 \
   /etc/modprobe.d/thunderbolt-net-page-pool.conf
 ```
 
+This file can coexist with `thunderbolt-net-rx.conf`: both contain `options`
+for `thunderbolt_net`, and [modprobe.d(5)](https://manpages.ubuntu.com/manpages/noble/man5/modprobe.d.5.html)
+combines their distinct parameters. Together they are equivalent to:
+
+```conf
+options thunderbolt_net rx_segment=1 rx_segment_mtu=1500 rx_page_pool=1
+```
+
+Separate files are a convenience, not a requirement. Use one layout and avoid
+repeating the same parameter with conflicting values. Removing the page-pool
+file leaves RX normalization configured; either change needs a module reload
+to affect the running driver.
+
 Reload from a console/independent connection as above and verify
 `cat /sys/module/thunderbolt_net/parameters/rx_page_pool` returns `Y`.
 To disable just the pool, remove that opt-in file (or set `rx_page_pool=0`), refresh
