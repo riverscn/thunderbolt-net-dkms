@@ -43,6 +43,17 @@ fix for this driver. The [2025 Thunderbolt bridging discussion](https://www.spin
 identifies oversized RX packets as a possible cause of poor forwarding and
 suggests disabling sender TSO as a diagnostic, rather than supplying an RX fix.
 
+A closer [Airoha HW GRO discussion (September 2026)](https://lists.infradead.org/pipermail/linux-arm-kernel/2026-September/1167867.html)
+also deals with missing per-segment MSS. Its author proposes an estimate based
+on the hardware-reported number of original TCP segments, arguing that the
+estimate cannot exceed the original MSS under that hardware's aggregation
+rules. This is a proposal/discussion, not a Thunderbolt fix. Thunderbolt's
+`frame_count` counts transport fragments, not original TCP segments, so that
+formula cannot be transferred to this driver. The documented
+[hardware GRO contract](https://docs.kernel.org/networking/netdev-features.html)
+requires reconstructing the original packet stream; an estimate from interface
+MTU alone does not establish that contract.
+
 ## Isolated forwarding results — 2026-10-10
 
 [CI run 38018167718](https://github.com/riverscn/thunderbolt-net-dkms/actions/runs/38018167718)
@@ -136,27 +147,98 @@ throughput benchmarks. Retransmission counts vary with scheduling and TCP
 recovery. They establish a functional failure mechanism, not a speed ratio,
 and do not establish how macOS reacts to the same situation.
 
+## Optional forwarding-core prototype
+
+`tests/forwarding/linux-7.0-rx-gso-mtu.patch` is an **experimental Linux 7.0
+networking-core patch**, not an upstream API or a fix provided by the DKMS
+package alone. It does not advertise `NETIF_F_GRO_HW`. It adds an explicit
+shared-info flag for validated RX TCP
+aggregates whose original MSS is unavailable. The driver sets that flag only
+when built against this patched kernel. Stock-kernel behavior is unchanged.
+
+For marked aggregates, the core can reduce (never increase) `gso_size` after
+route selection and at bridge egress. IPv4/IPv6 final output rechecks the route
+MTU, since the earlier forwarding check can use a different limit. Each change
+recalculates `gso_segs` and unshares cloned storage before modifying metadata.
+Deep skb copies preserve the flag. Unmarked GSO and ordinary non-GSO packets
+keep the existing kernel behavior; unsupported marked shapes are rejected.
+
+The CI-only `tests/forwarding/run.sh` downloads checksum-pinned Linux 7.0,
+applies the patch without fuzz, builds a minimal kernel and runs the diskless
+QEMU suite. Run it only inside a disposable container: it installs build
+packages and test-kernel files there. QEMU uses no external network device or
+hardware passthrough. The kernel is not installed on the host, shipped in the
+Debian package or published as a release asset.
+
+[CI run 38020441558](https://github.com/riverscn/thunderbolt-net-dkms/actions/runs/38020441558)
+validated code `119a684` on `7.0.0-tbnet-forward-test`. The three stock-kernel
+regression jobs also passed. The patched guest passed 39 existing unit cases,
+16 bridge/router controls, all [80 MTU observations](forwarding-core-mtu-results.csv),
+four additional helper fixtures (IPv4/IPv6, plain/QinQ, clone isolation,
+deep-copy preservation and no enlargement), and the GRO ordering checks.
+All 80 observations delivered valid payloads within the local limit without
+PMTU feedback. These fixtures were oversized aggregates or 1200-byte controls;
+they did not cover the problematic intermediate-sized aggregates.
+
+All [eight TCP sessions](forwarding-core-tcp-results.csv) completed, but automatic
+mode still retransmitted heavily. This is a failed **general automatic-mode
+hypothesis**, despite passing the bounded correctness/regression assertions.
+The `unmarked` control uses the same patched kernel and RX reconstruction, but
+clears the opt-in flag to bypass the new core handling.
+
+| Policy | IPv4 retransmissions | IPv6 retransmissions | Oversized ordinary RX packets, IPv4 / IPv6 |
+| --- | ---: | ---: | ---: |
+| Preserve original GSO | 28 | 28 | Not reconstructed |
+| Automatic + core handling | 387 | 335 | 183 / 157 |
+| Explicit cap 1280 | 15 | 15 | 0 / 0 |
+| Automatic, unmarked control | 345 | 346 | 154 / 154 |
+
+In automatic mode, only two of 185 IPv4 aggregates and two of 159 IPv6
+aggregates became GSO again. The others exceeded the 1280 route limit but
+stayed below the 9000 ingress threshold, so the RX helper returned ordinary
+packets before setting the marker. Their maximum IP lengths were 6192/6112.
+The counters directly establish this uncovered class; they are not a per-packet
+drop trace or proof that every retransmission has the same cause. The explicit
+cap rebuilt all 67 aggregates in each family and left no oversized ordinary
+packets. No throughput improvement is established by these short sessions.
+
+This is a local forwarding-bound prototype, **not general MSS recovery**:
+
+- It knows the selected local output/route MTU, not an unknown smaller MTU at a
+  later router. Sender PMTU feedback does not necessarily update that local
+  forwarding bound.
+- RX packets at or below ingress MTU retain the existing non-GSO behavior. A
+  metadata-free aggregate below that threshold cannot be distinguished from
+  a legitimate ordinary jumbo packet by its length alone.
+- QinQ and cloned/deep-copied skb checks exercise the helper. They do not prove
+  every VLAN bridge, offload, tunnel, NAT or encapsulation combination works.
+- The new flag's full lifetime across the networking stack still needs upstream
+  design review. Physical Thunderbolt, macOS behavior and performance remain
+  untested for this prototype.
+
 ## Decision and remaining work
 
+Do not promote this prototype to a release or enable automatic mode by default.
 Keep automatic mode experimental and retain the default 1500 cap. Following
 `net_device.mtu` is the right interface-configuration mechanism, but it cannot
 by itself reconstruct the sender's segmentation contract. Even a 1500 cap
 is not sufficient for a 1280 route: the compatibility cap must fit the intended
 path. The published v0.2.0 package is unchanged.
 
-A complete automatic fix needs a trustworthy per-flow segmentation bound or
-segmentation at a stage that knows the actual forwarding limit. Merely checking
-the bridge master MTU can help a particular bridge but cannot cover smaller
+A complete automatic fix needs a trustworthy per-flow segmentation bound.
+The optional core prototype explores a narrower solution at a stage that
+knows the local forwarding limit; it does not establish a remote path bound.
+Merely checking the bridge master MTU can help a particular bridge but cannot cover smaller
 routed/remote paths. Looking up a route in the RX driver can precede DNAT,
 policy routing or bridge forwarding and should not be treated as authoritative.
 Learning from SYN MSS alone also does not track later PMTU changes.
 
-For this DKMS branch, keep explicit bounds as a fallback while exploring these
-policies in isolation; do not replace them with an ingress-only default or
-backport the unrelated BIG TCP aggregate-size series as an MTU fix. Next tests
-should cover a candidate bound policy, VLAN/offload-capable forwarding and
-macOS endpoint behavior before any production rollout. Real Thunderbolt
-throughput and hotplug tests remain separate. No host driver or network
+For this DKMS branch, keep explicit bounds as a fallback; do not replace them
+with an ingress-only default or backport the unrelated BIG TCP aggregate-size
+series as an MTU fix. Further work must cover unknown downstream PMTU, complete
+VLAN/offload-capable forwarding paths and macOS endpoint behavior before any
+production rollout. Real Thunderbolt throughput and hotplug tests remain
+separate. No host driver or network
 configuration was changed for these experiments.
 
 ## Source references

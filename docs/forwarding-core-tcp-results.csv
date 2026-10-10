@@ -1,0 +1,9 @@
+kernel,commit,ipv,policy,route_mtu,success,sent,pmtu,snd_mss,retrans,aggregates,rebuilt,failures,min_mss,rebuilt_gso,plain_over_path,max_plain_iplen
+7.0.0-tbnet-forward-test,119a684,4,preserve,1280,1,1048576,1280,1228,28,43,0,0,1228,0,0,0
+7.0.0-tbnet-forward-test,119a684,4,auto,1280,1,1048576,1280,1228,387,185,185,0,1228,2,183,6192
+7.0.0-tbnet-forward-test,119a684,4,capped,1280,1,1048576,1280,1228,15,67,67,0,1228,67,0,0
+7.0.0-tbnet-forward-test,119a684,4,unmarked,1280,1,1048576,1280,1228,345,156,156,0,1228,2,154,2508
+7.0.0-tbnet-forward-test,119a684,6,preserve,1280,1,1048576,1280,1208,28,42,0,0,1208,0,0,0
+7.0.0-tbnet-forward-test,119a684,6,auto,1280,1,1048576,1280,1208,335,159,159,0,1208,2,157,6112
+7.0.0-tbnet-forward-test,119a684,6,capped,1280,1,1048576,1280,1208,15,67,67,0,1208,67,0,0
+7.0.0-tbnet-forward-test,119a684,6,unmarked,1280,1,1048576,1280,1208,346,156,156,0,1208,2,154,2488

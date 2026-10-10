@@ -26,6 +26,8 @@ debian/thunderbolt-net-dkms.examples
 dkms.conf
 docs/compatibility.md
 docs/design.md
+docs/forwarding-core-mtu-results.csv
+docs/forwarding-core-tcp-results.csv
 docs/installation.md
 docs/iperf3-results.csv
 docs/mtu-exploration.md
