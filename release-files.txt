@@ -33,6 +33,7 @@ docs/privacy.md
 docs/releasing.md
 docs/roadmap.md
 docs/rx-page-pool.md
+docs/tcp-pmtu-results.csv
 docs/testing.md
 docs/validation.md
 packaging/thunderbolt-net-page-pool.conf.example

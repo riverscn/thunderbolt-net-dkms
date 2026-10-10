@@ -18,6 +18,31 @@ or discover the eventual bridge port, route MTU or remote path MTU.
 A 9000-byte ingress MTU is not proof that 9000-byte segments fit an egress.
 Do not enable automatic mode on mixed-MTU production forwarding yet.
 
+## Linux MTU and GSO are different contracts
+
+Using `net_device.mtu`, configured through `ip link`, is the normal way to
+follow an individual interface's MTU. It is a ceiling, not the peer's TCP MSS
+or an end-to-end path guarantee. GSO instead carries an explicit payload
+segment size in `gso_size`; GRO aims to preserve the original segmentation
+when paired with GSO. VirtIO transports that size as metadata. The current
+ThunderboltIP frame header carries fragment size/index/count and an ID, but
+no equivalent MSS field.
+
+Consequently, automatic interface tracking is a useful configuration direction,
+but setting inferred `gso_size = ingress MTU - headers` is a compatibility
+policy, not the standard way to recover missing TCP boundaries. A sender can
+correctly reduce its MSS after PMTU feedback while continuing to send large
+TSO aggregates. Replacing the missing size with the ingress MTU can discard
+that adjustment. The real TCP comparison below exercises this failure mechanism.
+
+The September 2026 upstream [GSO re-segmentation series](https://lists.openwall.net/netdev/2026/09/30/351)
+addresses a different limit: it groups existing MSS-sized segments into smaller
+GSO aggregates to fit `gso_max_size`/`gso_max_segs`. It does not recover a missing
+MSS or promise to shrink an MSS that exceeds a route MTU, so it is not a direct
+fix for this driver. The [2025 Thunderbolt bridging discussion](https://www.spinics.net/lists/netdev/msg1120084.html)
+identifies oversized RX packets as a possible cause of poor forwarding and
+suggests disabling sender TSO as a diagnostic, rather than supplying an RX fix.
+
 ## Isolated forwarding results — 2026-10-10
 
 [CI run 38018167718](https://github.com/riverscn/thunderbolt-net-dkms/actions/runs/38018167718)
@@ -71,23 +96,74 @@ Reaching its transmit callback is not proof of successful wire transmission:
 a real NIC/peer may reject them. These are synthetic packet-path observations,
 not complete TCP/PMTUD sessions or physical-device performance measurements.
 
+## Real TCP comparison — 2026-10-10
+
+[CI run 38018712357](https://github.com/riverscn/thunderbolt-net-dkms/actions/runs/38018712357)
+tested `a097e77` on the same three kernels. All CI jobs passed, including the
+existing packet, lifecycle and DKMS checks. Each guest additionally ran six
+TCP sessions: IPv4/IPv6 with original GSO metadata, metadata loss followed by
+ingress-derived reconstruction, and metadata loss followed by a 1280 cap.
+The two endpoints are Linux network namespaces linked through a guest-only
+virtual pair and a routed veth. Interfaces stay at 9000; the router has an
+explicit 1280 destination route. No host network or physical device is used.
+
+The virtual link either preserves the Linux GSO skb or copies its bytes into
+a fresh skb, completes the full aggregate checksum, discards its GSO metadata
+and invokes the production RX helper. This models the relevant information
+loss; it does not emulate macOS, Thunderbolt framing, DMA or NAPI scheduling.
+Ordinary non-GSO packets are passed through unchanged.
+
+A session succeeds only when the receiver verifies all 1 MiB and returns an
+application acknowledgment within the client's 8-second observation window.
+The [18-row dataset](tcp-pmtu-results.csv) records `TCP_INFO` and link counters.
+`sent` is bytes accepted by the local send socket, not delivered bytes.
+
+| Policy | IPv4, three kernels | IPv6, three kernels |
+| --- | --- | --- |
+| Preserve original GSO metadata | All complete; 28 retransmissions each | All complete; 28–29 retransmissions |
+| Rebuild from ingress MTU 9000 | All complete; 125–401 retransmissions | 6.8/6.12 do not complete within 8 s; 7.0 completes; 46–112 retransmissions |
+| Rebuild with cap 1280 | All complete; 5 retransmissions each | All complete; 5–19 retransmissions |
+
+Every sender reports PMTU 1280 and a reduced MSS: 1228 for IPv4 or 1208 for
+IPv6 (timestamps account for the extra TCP header bytes). Link counters also
+confirm that GSO aggregates with these smaller original MSS values reached
+the reconstruction path. Thus correct sender PMTU discovery alone does not
+prevent excessive retransmission when the receiver replaces the missing size
+with ingress MTU. It is not an unconditional black hole: some sessions recover.
+
+These are one bounded transfer per policy/IP family/kernel, not repeated
+throughput benchmarks. Retransmission counts vary with scheduling and TCP
+recovery. They establish a functional failure mechanism, not a speed ratio,
+and do not establish how macOS reacts to the same situation.
+
 ## Decision and remaining work
 
-Keep automatic mode experimental and retain the default 1500 cap. Ingress MTU
-tracking works, but neither it nor the bridge master MTU establishes every
-forwarding limit. Even a 1500 cap is not sufficient for a 1280 route: the cap
-must fit the intended path. The published v0.2.0 package is unchanged.
+Keep automatic mode experimental and retain the default 1500 cap. Following
+`net_device.mtu` is the right interface-configuration mechanism, but it cannot
+by itself reconstruct the sender's segmentation contract. Even a 1500 cap
+is not sufficient for a 1280 route: the compatibility cap must fit the intended
+path. The published v0.2.0 package is unchanged.
 
-Before selecting an automatic forwarding policy, test complete TCP sessions
-and sender reaction to PMTU feedback, then VLAN and offload-capable egress
-paths. Linux emitting a correct error does not establish that macOS adjusts
-its Thunderbolt aggregates, or that this driver can recover their original
-MSS. Real Thunderbolt throughput and hotplug validation remain separate;
-no host driver or network configuration was changed for these experiments.
+A complete automatic fix needs a trustworthy per-flow segmentation bound or
+segmentation at a stage that knows the actual forwarding limit. Merely checking
+the bridge master MTU can help a particular bridge but cannot cover smaller
+routed/remote paths. Looking up a route in the RX driver can precede DNAT,
+policy routing or bridge forwarding and should not be treated as authoritative.
+Learning from SYN MSS alone also does not track later PMTU changes.
+
+For this DKMS branch, keep explicit bounds as a fallback while exploring these
+policies in isolation; do not replace them with an ingress-only default or
+backport the unrelated BIG TCP aggregate-size series as an MTU fix. Next tests
+should cover a candidate bound policy, VLAN/offload-capable forwarding and
+macOS endpoint behavior before any production rollout. Real Thunderbolt
+throughput and hotplug tests remain separate. No host driver or network
+configuration was changed for these experiments.
 
 ## Source references
 
 - [Netdevice MTU semantics](https://docs.kernel.org/networking/netdevices.html#mtu)
+- [VirtIO GSO metadata](https://github.com/torvalds/linux/blob/v7.0/include/uapi/linux/virtio_net.h)
+- [ThunderboltIP framing](https://github.com/torvalds/linux/blob/v7.0/drivers/net/thunderbolt/main.c)
 - [GSO segment-size semantics](https://docs.kernel.org/networking/segmentation-offloads.html)
 - [v7.0 bridge forwarding](https://github.com/torvalds/linux/blob/v7.0/net/bridge/br_forward.c)
 - [v7.0 IPv4 forwarding](https://github.com/torvalds/linux/blob/v7.0/net/ipv4/ip_forward.c)
