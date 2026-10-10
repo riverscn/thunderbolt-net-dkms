@@ -9,3 +9,6 @@ docs/privacy.md
 docs/rx-page-pool.md
 docs/validation.md
 docs/iperf3-results.csv
+docs/upstream-tracking.md
+docs/upstream-validation.md
+docs/upstream-iperf3-results.csv

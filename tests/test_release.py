@@ -43,7 +43,7 @@ class ReleaseTests(unittest.TestCase):
                          'sha256sum --check', 'rx_page_pool=1',
                          'thunderbolt-net-page-pool.conf.example',
                          'parameters/rx_page_pool', '--allow-downgrades',
-                         'thunderbolt-net-dkms_0.1.1-1_all.deb'):
+                         'thunderbolt-net-dkms_0.2.0-1_all.deb'):
             self.assertIn(required, opening)
         self.assertIn('validation.md', opening)
         self.assertIn('disabled by default', opening)
@@ -56,20 +56,20 @@ class ReleaseTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             fixture = pathlib.Path(tmp)
             (fixture / 'debian').mkdir()
-            (fixture / 'VERSION').write_text('0.3.0\n')
+            (fixture / 'VERSION').write_text('0.4.0\n')
             (fixture / 'debian/changelog').write_text(
-                'thunderbolt-net (0.3.0-2) unstable; urgency=medium\n')
+                'thunderbolt-net (0.4.0-2) unstable; urgency=medium\n')
             (fixture / 'CHANGELOG.md').write_text(
-                '# Changelog\n\n## 0.3.0\n\n- Next release fixture.\n'
-                '\n## 0.2.0\n\n- Previous release fixture.\n')
+                '# Changelog\n\n## 0.4.0\n\n- Next release fixture.\n'
+                '\n## 0.3.0\n\n- Previous release fixture.\n')
             module.ROOT = fixture
             text = module.render('example/thunderbolt-net-dkms')
-        self.assertIn('**0.3.0:', text.split('## Changes in ', 1)[0])
-        self.assertIn('/releases/download/v0.3.0/thunderbolt-net-dkms_0.3.0-2_all.deb', text)
-        self.assertIn('/blob/v0.3.0/docs/installation.md', text)
-        self.assertIn('Expect version `0.3.0`', text)
-        self.assertIn('## Changes in v0.3.0\n\n- Next release fixture.', text)
-        self.assertNotIn('0.2.0', text)
+        self.assertIn('**0.4.0:', text.split('## Changes in ', 1)[0])
+        self.assertIn('/releases/download/v0.4.0/thunderbolt-net-dkms_0.4.0-2_all.deb', text)
+        self.assertIn('/blob/v0.4.0/docs/installation.md', text)
+        self.assertIn('Expect version `0.4.0`', text)
+        self.assertIn('## Changes in v0.4.0\n\n- Next release fixture.', text)
+        self.assertNotIn('0.3.0', text)
         self.assertNotIn('Previous release fixture.', text)
 
     def test_rx_model_uses_the_tested_driver_functions(self):
