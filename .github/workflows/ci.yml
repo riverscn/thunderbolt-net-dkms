@@ -1,8 +1,10 @@
 name: Build and test
 
 "on":
+  # Branch work is checked through its pull request (the merge result) or by
+  # manual dispatch; pushing feature branches as well would run CI twice.
   push:
-    branches: [main, 'experiment/**', 'feature/**']
+    branches: [main]
     tags: ['v*']
   pull_request:
   workflow_dispatch:

@@ -154,9 +154,11 @@ existing version.
 
 ## CI and update discovery
 
-Pushes, pull requests and manual workflow dispatch run the existing distribution
-matrix plus a checksum-pinned upstream stable kernel. The new job builds the
-kernel in a disposable container, boots packet/bridge/router/GRO tests in a
+Pushes to `main`, release tags, pull requests and manual workflow dispatch run
+the existing distribution matrix plus a checksum-pinned upstream stable kernel.
+Other branches run through their pull request, which tests the merge result; to
+check a branch without one, run `gh workflow run ci.yml --ref <branch>`.
+The upstream job builds the kernel in a disposable container, boots packet/bridge/router/GRO tests in a
 no-NIC QEMU guest, and checks actual DKMS installation/removal and restoration
 of the kernel's original module. It is a release prerequisite. `scripts/check-throttling.sh` also
 checks that each built module uses `tb_ring_throttling()` exactly when its kernel
