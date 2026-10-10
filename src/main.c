@@ -377,10 +377,8 @@ static void tbnet_free_buffers(struct tbnet_ring *ring)
 
 		trace_tbnet_free_frame(i, tf->page, tf->frame.buffer_phy, dir);
 
-		if (tf->frame.buffer_phy)
-			dma_unmap_page(dma_dev, tf->frame.buffer_phy, size,
-				       dir);
-
+		if (!ring->ring->is_tx || tf->frame.buffer_phy)
+			dma_unmap_page(dma_dev, tf->frame.buffer_phy, size, dir);
 		__free_pages(tf->page, order);
 		tf->page = NULL;
 	}
@@ -529,50 +527,40 @@ static unsigned int tbnet_available_buffers(const struct tbnet_ring *ring)
 static int tbnet_alloc_rx_buffers(struct tbnet *net, unsigned int nbuffers)
 {
 	struct tbnet_ring *ring = &net->rx_ring;
-	int ret;
+	struct device *dma_dev = tb_ring_dma_device(ring->ring);
 
 	while (nbuffers--) {
-		struct device *dma_dev = tb_ring_dma_device(ring->ring);
 		unsigned int index = ring->prod & (TBNET_RING_SIZE - 1);
 		struct tbnet_frame *tf = &ring->frames[index];
-		dma_addr_t dma_addr;
+		dma_addr_t dma;
+		int err;
 
 		if (tf->page)
 			break;
-
-		/* Allocate page (order > 0) so that it can hold maximum
-		 * ThunderboltIP frame (4kB) and the additional room for
-		 * SKB shared info required by build_skb().
-		 */
 		tf->page = dev_alloc_pages(TBNET_RX_PAGE_ORDER);
-		if (!tf->page) {
-			ret = -ENOMEM;
-			goto err_free;
+		if (!tf->page)
+			return -ENOMEM;
+		dma = dma_map_page(dma_dev, tf->page, 0,
+				   TBNET_RX_PAGE_SIZE, DMA_FROM_DEVICE);
+		if (dma_mapping_error(dma_dev, dma)) {
+			__free_pages(tf->page, TBNET_RX_PAGE_ORDER);
+			tf->page = NULL;
+			return -ENOMEM;
 		}
-
-		dma_addr = dma_map_page(dma_dev, tf->page, 0,
-					TBNET_RX_PAGE_SIZE, DMA_FROM_DEVICE);
-		if (dma_mapping_error(dma_dev, dma_addr)) {
-			ret = -ENOMEM;
-			goto err_free;
-		}
-
-		tf->frame.buffer_phy = dma_addr;
+		tf->frame.buffer_phy = dma;
 		tf->dev = net->dev;
-
-		trace_tbnet_alloc_rx_frame(index, tf->page, dma_addr,
-					   DMA_FROM_DEVICE);
-
-		tb_ring_rx(ring->ring, &tf->frame);
-
+		trace_tbnet_alloc_rx_frame(index, tf->page, dma, DMA_FROM_DEVICE);
+		err = tb_ring_rx(ring->ring, &tf->frame);
+		if (err) {
+			dma_unmap_page(dma_dev, dma, TBNET_RX_PAGE_SIZE,
+				       DMA_FROM_DEVICE);
+			__free_pages(tf->page, TBNET_RX_PAGE_ORDER);
+			tf->page = NULL;
+			return err;
+		}
 		ring->prod++;
 	}
-
 	return 0;
-
-err_free:
-	tbnet_free_buffers(ring);
-	return ret;
 }
 
 static struct tbnet_frame *tbnet_get_tx_buffer(struct tbnet *net)
@@ -720,9 +708,9 @@ static void tbnet_connected_work(struct work_struct *work)
 err_free_tx_buffers:
 	tbnet_free_buffers(&net->tx_ring);
 err_free_rx_buffers:
-	tbnet_free_buffers(&net->rx_ring);
 err_stop_rings:
 	tb_ring_stop(net->rx_ring.ring);
+	tbnet_free_buffers(&net->rx_ring);
 	tb_ring_stop(net->tx_ring.ring);
 	tb_xdomain_release_in_hopid(net->xd, net->remote_transmit_path);
 	tbnet_connect_failed(net);
