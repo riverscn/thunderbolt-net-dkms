@@ -23,6 +23,7 @@
 #include <linux/workqueue.h>
 
 #include <net/ip6_checksum.h>
+#include <net/page_pool/helpers.h>
 
 #include "trace.h"
 #include "rx_fixup.h"
@@ -150,6 +151,7 @@ struct tbnet_frame {
 };
 
 struct tbnet_ring {
+	struct page_pool *pool;
 	struct tbnet_frame frames[TBNET_RING_SIZE];
 	unsigned int cons;
 	unsigned int prod;
@@ -229,6 +231,11 @@ static const uuid_t tbnet_svc_uuid =
 		  0x97, 0xc6, 0x56, 0x64, 0xa9, 0x20, 0xc8, 0xdd);
 
 static struct tb_property_dir *tbnet_dir;
+
+/* Experimental RX page recycling, deliberately disabled by default. */
+static bool tbnet_rx_page_pool;
+module_param_named(rx_page_pool, tbnet_rx_page_pool, bool, 0444);
+MODULE_PARM_DESC(rx_page_pool, "Experimental RX page recycling (default: false)");
 
 /* Experimental receive workaround, deliberately disabled by default. */
 static bool tbnet_rx_segment;
@@ -383,9 +390,13 @@ static void tbnet_free_buffers(struct tbnet_ring *ring)
 
 		trace_tbnet_free_frame(i, tf->page, tf->frame.buffer_phy, dir);
 
-		if (!ring->ring->is_tx || tf->frame.buffer_phy)
-			dma_unmap_page(dma_dev, tf->frame.buffer_phy, size, dir);
-		__free_pages(tf->page, order);
+		if (ring->pool) {
+			page_pool_put_full_page(ring->pool, tf->page, false);
+		} else {
+			if (!ring->ring->is_tx || tf->frame.buffer_phy)
+				dma_unmap_page(dma_dev, tf->frame.buffer_phy, size, dir);
+			__free_pages(tf->page, order);
+		}
 		tf->page = NULL;
 	}
 
@@ -396,6 +407,27 @@ static void tbnet_free_buffers(struct tbnet_ring *ring)
 /* Callers must serialize prepare/quiesce and quiesce device DMA before freeing. */
 static int tbnet_rx_prepare(struct tbnet *net)
 {
+	struct page_pool_params p = {
+		.flags = PP_FLAG_DMA_MAP | PP_FLAG_DMA_SYNC_DEV,
+		.order = TBNET_RX_PAGE_ORDER,
+		.pool_size = TBNET_RING_SIZE,
+		.nid = NUMA_NO_NODE,
+		.dev = tb_ring_dma_device(net->rx_ring.ring),
+		.napi = &net->napi,
+		.dma_dir = DMA_FROM_DEVICE,
+		.offset = 0,
+		.max_len = TBNET_FRAME_SIZE,
+	};
+
+	if (tbnet_rx_page_pool) {
+		net->rx_ring.pool = page_pool_create(&p);
+		if (IS_ERR(net->rx_ring.pool)) {
+			int err = PTR_ERR(net->rx_ring.pool);
+
+			net->rx_ring.pool = NULL;
+			return err;
+		}
+	}
 	WRITE_ONCE(net->rx_stopping, false);
 	return 0;
 }
@@ -431,6 +463,10 @@ static void tbnet_rx_quiesce(struct tbnet *net)
 	net->skb = NULL;
 	memset(&net->rx_hdr, 0, sizeof(net->rx_hdr));
 	tbnet_free_buffers(&net->rx_ring);
+	if (net->rx_ring.pool) {
+		page_pool_destroy(net->rx_ring.pool);
+		net->rx_ring.pool = NULL;
+	}
 }
 
 static void tbnet_tear_down(struct tbnet *net, bool send_logout)
@@ -575,24 +611,35 @@ static int tbnet_alloc_rx_buffers(struct tbnet *net, unsigned int nbuffers)
 
 		if (tf->page)
 			break;
-		tf->page = dev_alloc_pages(TBNET_RX_PAGE_ORDER);
+		if (ring->pool)
+			tf->page = page_pool_dev_alloc_pages(ring->pool);
+		else
+			tf->page = dev_alloc_pages(TBNET_RX_PAGE_ORDER);
 		if (!tf->page)
 			return -ENOMEM;
-		dma = dma_map_page(dma_dev, tf->page, 0,
-				   TBNET_RX_PAGE_SIZE, DMA_FROM_DEVICE);
-		if (dma_mapping_error(dma_dev, dma)) {
-			__free_pages(tf->page, TBNET_RX_PAGE_ORDER);
-			tf->page = NULL;
-			return -ENOMEM;
+		if (ring->pool) {
+			dma = page_pool_get_dma_addr(tf->page);
+		} else {
+			dma = dma_map_page(dma_dev, tf->page, 0,
+					   TBNET_RX_PAGE_SIZE, DMA_FROM_DEVICE);
+			if (dma_mapping_error(dma_dev, dma)) {
+				__free_pages(tf->page, TBNET_RX_PAGE_ORDER);
+				tf->page = NULL;
+				return -ENOMEM;
+			}
 		}
 		tf->frame.buffer_phy = dma;
 		tf->dev = net->dev;
 		trace_tbnet_alloc_rx_frame(index, tf->page, dma, DMA_FROM_DEVICE);
 		err = tb_ring_rx(ring->ring, &tf->frame);
 		if (err) {
-			dma_unmap_page(dma_dev, dma, TBNET_RX_PAGE_SIZE,
-				       DMA_FROM_DEVICE);
-			__free_pages(tf->page, TBNET_RX_PAGE_ORDER);
+			if (ring->pool) {
+				page_pool_put_full_page(ring->pool, tf->page, false);
+			} else {
+				dma_unmap_page(dma_dev, dma, TBNET_RX_PAGE_SIZE,
+					       DMA_FROM_DEVICE);
+				__free_pages(tf->page, TBNET_RX_PAGE_ORDER);
+			}
 			tf->page = NULL;
 			return err;
 		}
@@ -879,7 +926,7 @@ static int tbnet_poll(struct napi_struct *napi, int budget)
 	struct device *dma_dev = tb_ring_dma_device(net->rx_ring.ring);
 	unsigned int rx_packets = 0;
 
-	/* RX allocation is not valid for budget 0. */
+	/* RX allocation and page-pool operations are not valid for budget 0. */
 	if (!budget)
 		return 0;
 
@@ -906,8 +953,12 @@ static int tbnet_poll(struct napi_struct *napi, int budget)
 		if (!frame)
 			break;
 
-		dma_unmap_page(dma_dev, frame->buffer_phy,
-			       TBNET_RX_PAGE_SIZE, DMA_FROM_DEVICE);
+		if (net->rx_ring.pool)
+			dma_sync_single_for_cpu(dma_dev, frame->buffer_phy,
+						TBNET_FRAME_SIZE, DMA_FROM_DEVICE);
+		else
+			dma_unmap_page(dma_dev, frame->buffer_phy,
+				       TBNET_RX_PAGE_SIZE, DMA_FROM_DEVICE);
 
 		tf = container_of(frame, typeof(*tf), frame);
 
@@ -920,7 +971,10 @@ static int tbnet_poll(struct napi_struct *napi, int budget)
 		if (!tbnet_check_frame(net, tf, hdr)) {
 			trace_tbnet_invalid_rx_ip_frame(hdr->frame_size,
 				hdr->frame_id, hdr->frame_index, hdr->frame_count);
-			__free_pages(page, TBNET_RX_PAGE_ORDER);
+			if (net->rx_ring.pool)
+				page_pool_put_full_page(net->rx_ring.pool, page, true);
+			else
+				__free_pages(page, TBNET_RX_PAGE_ORDER);
 			dev_kfree_skb_any(net->skb);
 			net->skb = NULL;
 			continue;
@@ -935,11 +989,16 @@ static int tbnet_poll(struct napi_struct *napi, int budget)
 			skb = napi_build_skb(page_address(page),
 					TBNET_RX_PAGE_SIZE);
 			if (!skb) {
-				__free_pages(page, TBNET_RX_PAGE_ORDER);
+				if (net->rx_ring.pool)
+					page_pool_put_full_page(net->rx_ring.pool, page, true);
+				else
+					__free_pages(page, TBNET_RX_PAGE_ORDER);
 				net->stats.rx_errors++;
 				break;
 			}
 
+			if (net->rx_ring.pool)
+				skb_mark_for_recycle(skb);
 			skb_reserve(skb, hdr_size);
 			skb_put(skb, frame_size);
 
