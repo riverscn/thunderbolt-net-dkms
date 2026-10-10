@@ -206,7 +206,7 @@ done
                    '-m', '1024', '-smp', '1', '-nodefaults', '-no-user-config',
                    '-display', 'none', '-monitor', 'none', '-serial', 'stdio',
                    '-nic', 'none', '-no-reboot', '-kernel', str(image),
-                   '-initrd', str(archive), '-append', 'console=ttyS0 rdinit=/init panic=-1 quiet']
+                   '-initrd', str(archive), '-append', 'console=ttyS0 rdinit=/init panic=-1 log_buf_len=4M quiet']
         result = run(command, capture_output=True, text=True)
         build = ROOT / 'build'
         build.mkdir(exist_ok=True)
