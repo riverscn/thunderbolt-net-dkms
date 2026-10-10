@@ -1,2 +1,0 @@
-upstream/*.patch -whitespace
-upstream/commits/*.patch -whitespace

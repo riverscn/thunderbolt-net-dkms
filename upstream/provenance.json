@@ -37,44 +37,28 @@
   ],
   "imports": [
     {
-      "commit": "5140737c592d23b4de0f98c47dd347684a0c8de3",
-      "path": "upstream/commits/5140737c592d23b4de0f98c47dd347684a0c8de3.patch",
-      "sha256": "4869a0031b6307c4b0f6eee0d0d21569137ae4a46197b878e73a09919acd6c27"
+      "commit": "5140737c592d23b4de0f98c47dd347684a0c8de3"
     },
     {
-      "commit": "c51777370ac2ef435401340e205ef1d0c778df28",
-      "path": "upstream/commits/c51777370ac2ef435401340e205ef1d0c778df28.patch",
-      "sha256": "1184c8ee53a2e5806f2e67e5ee03bbdd9e186af1a84ae9965febd096e5808aa5"
+      "commit": "c51777370ac2ef435401340e205ef1d0c778df28"
     },
     {
-      "commit": "55d9895f89970501fe126d1026b586b04a224c27",
-      "path": "upstream/commits/55d9895f89970501fe126d1026b586b04a224c27.patch",
-      "sha256": "d2e757442b6019d967e0837b6ee4f3bdf92532d164927495f0cf0a32dcde60cf"
+      "commit": "55d9895f89970501fe126d1026b586b04a224c27"
     },
     {
-      "commit": "1881f2efbf7f78dc0a79a387b29fde6ff56d3731",
-      "path": "upstream/commits/1881f2efbf7f78dc0a79a387b29fde6ff56d3731.patch",
-      "sha256": "c31a96c8138453601e93b1e0f8f4fe6fe9c108b901b9056df24bb980a8749e09"
+      "commit": "1881f2efbf7f78dc0a79a387b29fde6ff56d3731"
     },
     {
-      "commit": "68bf02b6b4ad3f748c6db71fd77b6c0402d252f4",
-      "path": "upstream/commits/68bf02b6b4ad3f748c6db71fd77b6c0402d252f4.patch",
-      "sha256": "a2bd54073076891b45a43a612d2b5d5da54680b0f66b08040e864d35637457c0"
+      "commit": "68bf02b6b4ad3f748c6db71fd77b6c0402d252f4"
     },
     {
-      "commit": "1c361f6cf39be7cc0ce37c0b67bd1cdf74b0a0c1",
-      "path": "upstream/commits/1c361f6cf39be7cc0ce37c0b67bd1cdf74b0a0c1.patch",
-      "sha256": "5573a07c94b8816bba09266407c37c1a6730f229e93d3954c840d1e2336d317a"
+      "commit": "1c361f6cf39be7cc0ce37c0b67bd1cdf74b0a0c1"
     },
     {
-      "commit": "d6c0af293129345a17dc31c9b4179dc7f3d6af7a",
-      "path": "upstream/commits/d6c0af293129345a17dc31c9b4179dc7f3d6af7a.patch",
-      "sha256": "398665d4f4d74724931a3dfc4af2a16f32dafaeaa0b009d2e3b3a10eeef93e28"
+      "commit": "d6c0af293129345a17dc31c9b4179dc7f3d6af7a"
     },
     {
-      "commit": "21c0a41260e4b799a89ef34ae1b67261cbbcdfb1",
-      "path": "upstream/commits/21c0a41260e4b799a89ef34ae1b67261cbbcdfb1.patch",
-      "sha256": "e562c81fc7e0d823cde3934fdf0cc83e7211b66352c24c8d64501795b2c39622"
+      "commit": "21c0a41260e4b799a89ef34ae1b67261cbbcdfb1"
     }
   ]
 }

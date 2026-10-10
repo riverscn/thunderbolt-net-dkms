@@ -35,24 +35,21 @@ def verify(root=ROOT):
                     f"{metadata['commit']}/drivers/net/thunderbolt/{name}")
         if metadata['urls'][name] != expected:
             raise ValueError('upstream URL is not pinned: ' + name)
+    seen = set()
     for item in metadata.get('imports', []):
-        sha = item['commit']
-        validate_commit(sha)
-        if item['path'] != f'upstream/commits/{sha}.patch':
-            raise ValueError('invalid original patch path')
-        original = (root / item['path']).read_bytes()
-        validate_mail(sha, original)
-        if hashlib.sha256(original).hexdigest() != item['sha256']:
-            raise ValueError('original patch checksum mismatch: ' + sha)
-    patch = root / 'upstream/local.patch'
-    if patch.read_text() != delta(root):
-        raise ValueError('local delta is stale: review changes, then run upstream.py refresh')
+        validate_commit(item['commit'])
+        if item['commit'] in seen:
+            raise ValueError('duplicate upstream import')
+        seen.add(item['commit'])
+    # Derive the delta from the two maintained trees; do not store a patch copy.
     with tempfile.TemporaryDirectory(prefix='tbnet-replay-') as tmp:
         target = pathlib.Path(tmp)
         for name in FILES:
             shutil.copy2(root / 'upstream' / name, target / name)
-        subprocess.run(['git', 'apply', str(patch.resolve())], cwd=target,
-                       check=True, timeout=15)
+        change = delta(root).encode()
+        if change:
+            subprocess.run(['git', 'apply', '-'], input=change, cwd=target,
+                           check=True, timeout=15)
         for name in FILES:
             if (target / name).read_bytes() != (root / 'src' / name).read_bytes():
                 raise ValueError('delta replay mismatch: ' + name)
@@ -72,20 +69,32 @@ def stable_release(data):
     return version
 
 
-def resolve_tag(tag):
+def resolve_tag(tag, linux_tree):
     if not re.fullmatch(r'v\d+\.\d+(?:\.\d+)?', tag):
         raise ValueError('source baseline updates require an explicit stable tag')
-    api = 'https://api.github.com/repos/gregkh/linux/git/'
-    obj = json.loads(fetch(api + 'ref/tags/' + tag))['object']
-    for _ in range(4):
-        if not re.fullmatch(r'[0-9a-f]{40}', obj['sha']):
-            raise ValueError('invalid upstream object')
-        if obj['type'] == 'commit':
-            return obj['sha']
-        if obj['type'] != 'tag':
-            break
-        obj = json.loads(fetch(api + 'tags/' + obj['sha']))['object']
-    raise ValueError('tag does not resolve to a commit')
+    sha = git(linux_tree, 'rev-parse', '--verify', f'refs/tags/{tag}^{{commit}}',
+              capture_output=True).stdout.decode().strip()
+    validate_commit(sha)
+    return sha
+
+
+def source_files(linux_tree, commit):
+    validate_commit(commit)
+    return {name: git(linux_tree, 'show',
+                     f'{commit}:drivers/net/thunderbolt/{name}',
+                     capture_output=True).stdout for name in FILES}
+
+
+def commit_series(linux_tree, old, new):
+    if old == new:
+        return []
+    # Divergent stable branches need a maintainer-selected series. Never infer
+    # patch equivalence or discard merge resolutions silently.
+    git(linux_tree, 'merge-base', '--is-ancestor', old, new, capture_output=True)
+    return git(linux_tree, 'rev-list', '--reverse', '--topo-order', '--no-merges',
+               f'{old}..{new}', '--',
+               *['drivers/net/thunderbolt/' + n for n in FILES],
+               capture_output=True).stdout.decode().splitlines()
 
 
 def validate_commit(sha):
@@ -126,23 +135,39 @@ def import_mail(directory, sha, data):
     git(directory, 'commit', '--amend', '-q', '-F', '-', input=message.encode())
 
 
-def prepare(tag, output, root=ROOT, commits=()):
+def prepare(tag, output, linux_tree, root=ROOT, commits=None):
     metadata = verify(root)
     if output.exists():
         raise ValueError('output must not exist; source checkout is never overwritten')
+    commit = resolve_tag(tag, linux_tree)
+    original = source_files(linux_tree, metadata['commit'])
+    for name, data in original.items():
+        if data != (root / 'upstream' / name).read_bytes():
+            raise ValueError('Git baseline does not match checked-in upstream: ' + name)
+    if commits is None:
+        commits = commit_series(linux_tree, metadata['commit'], commit)
     seen = {item['commit'] for item in metadata.get('imports', [])}
     for sha in commits:
         validate_commit(sha)
         if sha in seen:
-            raise ValueError('duplicate or already archived commit: ' + sha)
+            raise ValueError('duplicate or already imported commit: ' + sha)
         seen.add(sha)
-    commit = resolve_tag(tag)
     urls = {name: f'https://raw.githubusercontent.com/gregkh/linux/{commit}/drivers/net/thunderbolt/{name}'
             for name in FILES}
-    # Endpoint files are verification only, never the input to an import.
-    expected = {name: fetch(url) for name, url in urls.items()}
-    mails = [(sha, fetch(f'https://github.com/gregkh/linux/commit/{sha}.patch'))
-             for sha in commits]
+    expected = source_files(linux_tree, commit)
+    # Git objects are the source of truth. format-patch/am is only an in-memory
+    # transport for path-limited commits, not a maintained patch-file series.
+    mails = []
+    for sha in commits:
+        parents = git(linux_tree, 'rev-list', '--parents', '-n', '1', sha,
+                      capture_output=True).stdout.decode().split()
+        if len(parents) != 2:
+            raise ValueError('import requires a non-merge commit with available parent: ' + sha)
+        data = git(linux_tree, 'format-patch', '-1', '--stdout', '--full-index',
+                   '--no-signature', sha, '--',
+                   *['drivers/net/thunderbolt/' + n for n in FILES],
+                   capture_output=True).stdout
+        mails.append((sha, data))
     for sha, data in mails:
         validate_mail(sha, data)
     output.mkdir(parents=True)
@@ -161,12 +186,7 @@ def prepare(tag, output, root=ROOT, commits=()):
         if (output / 'upstream' / name).read_bytes() != expected[name]:
             raise ValueError('commit series does not reproduce target baseline: ' + name)
     imports = list(metadata.get('imports', []))
-    for sha, data in mails:
-        path = f'upstream/commits/{sha}.patch'
-        (output / path).parent.mkdir(exist_ok=True)
-        (output / path).write_bytes(data)
-        imports.append({'commit': sha, 'path': path,
-                        'sha256': hashlib.sha256(data).hexdigest()})
+    imports.extend({'commit': sha} for sha in commits)
     conflicts = []
     for name in FILES:
         result = subprocess.run(['git', 'merge-file', '-p', str(root / 'src' / name),
@@ -197,22 +217,24 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest='command', required=True)
     sub.add_parser('verify')
-    sub.add_parser('refresh')
+    sub.add_parser('diff', help='print the derived local delta without storing a copy')
     status = sub.add_parser('status')
     status.add_argument('--output', type=pathlib.Path)
     update = sub.add_parser('prepare')
     update.add_argument('--tag', required=True)
-    update.add_argument('--commit', action='append', default=[], dest='commits',
+    update.add_argument('--linux-tree', required=True, type=pathlib.Path,
+                        help='local Linux Git repository, including baseline/tag history')
+    update.add_argument('--commit', action='append', default=None, dest='commits',
                         help='original upstream SHA, repeat in application order')
     update.add_argument('--output', type=pathlib.Path, required=True)
     args = parser.parse_args()
-    if args.command == 'refresh':
-        (ROOT / 'upstream/local.patch').write_text(delta())
+    if args.command == 'diff':
+        print(delta(), end='')
     elif args.command == 'verify':
         verify()
         print('Pinned baseline and local delta replay verified')
     elif args.command == 'prepare':
-        raise SystemExit(prepare(args.tag, args.output.resolve(), commits=args.commits))
+        raise SystemExit(prepare(args.tag, args.output.resolve(), args.linux_tree.resolve(), commits=args.commits))
     else:
         metadata = verify()
         releases = json.loads(fetch('https://www.kernel.org/releases.json'))
