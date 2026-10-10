@@ -96,7 +96,19 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Build pinned upstream stable and test DKMS in isolation
+      - name: Install build dependencies
+        run: bash scripts/ci-upstream.sh deps
+      - name: Identify the compiler for the kernel cache
+        id: toolchain
+        run: echo "gcc=$(gcc -dumpfullversion)" >> "$GITHUB_OUTPUT"
+      # The built tree depends only on the kernel lock, its config and the
+      # compiler; ci-upstream.sh rechecks them before reusing a restored tree.
+      - name: Restore the built test kernel
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: /var/cache/tbnet-upstream-kernel
+          key: upstream-kernel-ubuntu-24.04-gcc${{ steps.toolchain.outputs.gcc }}-${{ hashFiles('tests/kernels/stable.json', 'tests/kernels/config') }}
+      - name: Build or reuse pinned upstream stable and test DKMS in isolation
         run: bash scripts/ci-upstream.sh
       - name: Save upstream kernel diagnostics
         if: always()

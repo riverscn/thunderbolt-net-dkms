@@ -160,7 +160,10 @@ Other branches run through their pull request, which tests the merge result; to
 check a branch without one, run `gh workflow run ci.yml --ref <branch>`.
 The upstream job builds the kernel in a disposable container, boots packet/bridge/router/GRO tests in a
 no-NIC QEMU guest, and checks actual DKMS installation/removal and restoration
-of the kernel's original module. It is a release prerequisite. `scripts/check-throttling.sh` also
+of the kernel's original module. It is a release prerequisite. The built kernel
+tree is cached by the kernel lock, `tests/kernels/config` and compiler version;
+`ci-upstream.sh` reuses a restored tree only when its recorded inputs match and
+otherwise downloads, verifies and rebuilds it. `scripts/check-throttling.sh` also
 checks that each built module uses `tb_ring_throttling()` exactly when its kernel
 provides it, and the pinned job requires the new API, so a detection failure
 cannot fall back silently. This does not exercise physical enumeration, NHI DMA,
