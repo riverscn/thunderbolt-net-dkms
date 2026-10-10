@@ -82,10 +82,18 @@ installed module's undefined symbols with the target kernel's headers and
 
 ## Observations
 
-- **Enumeration after controller handoff.** Moving the controller between host
-  and VM dropped the link, and macOS stayed at Type-C CC level without entering
-  USB4 until the cable was replugged. The same happened once on first plug-in.
-  This occurs before the network driver is involved.
+- **Link loss after a host-router reset.** Every USB4 link loss in these tests
+  followed a reset of the host router. The Thunderbolt core resets it when it
+  loads (`host_reset`, default on), which happened on each controller handoff
+  to or from the VM and on each `modprobe -r` / `modprobe` of the core.
+  Afterwards macOS stayed at Type-C CC level without re-entering USB4. Cable
+  replugs did not recover it reliably (once on the second replug, once not
+  after three); in three cases the link returned by itself after 15–25
+  minutes. With the core loaded as `host_reset=0`, the VM attach, a re-probe
+  inside the VM and the return to the host each re-enumerated the peer after
+  about 90–110 seconds with no replug. One first plug-in also stopped at CC
+  level and needed a second replug. All of this happens below the network
+  driver; the firmware behaviour is not established and the sample is small.
 - **Login after reload during property exchange.** In the VM, bringing the
   interface up immediately after loading the module coincided with repeated
   XDomain property-change requests from the peer. Login did not complete until
