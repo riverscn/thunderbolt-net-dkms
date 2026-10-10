@@ -29,6 +29,30 @@ The new baseline also corrects complete-packet RX statistics and TX/RX E2E
 flag placement, and requests 128-microsecond ring interrupt throttling where
 supported. These changes need hardware regression before release.
 
+## Performance expectations and validation
+
+No hardware performance gain over v0.2.0 has been established for this baseline.
+The upstream changes have different purposes:
+
+| Change | Expected effect and limits |
+| --- | --- |
+| Ring interrupt throttling | The old core already programmed a fixed 128 microseconds. The new API moves that responsibility to service drivers, and this driver requests the same interval. This normally preserves behavior rather than adding a new optimization. Compared with an older external driver that leaves moderation unset on a new core, it may reduce interrupt/CPU overhead, with a latency tradeoff; this combination has not been measured here. |
+| TX E2E disabled, RX E2E retained when negotiated | May restore transmission on controllers that stall waiting for end-to-end credits. The upstream report concerns affected hardware, not evidence of faster throughput on our working setup. |
+| Complete-packet RX accounting | Corrects packet/byte statistics. Changed counters are not evidence of higher application throughput. |
+| Frame-size helper and compatibility wrapper | API adaptation with no established performance improvement. |
+
+See the original [throttling commit](https://github.com/gregkh/linux/commit/c51777370ac2ef435401340e205ef1d0c778df28)
+and [TX E2E revert](https://github.com/gregkh/linux/commit/1881f2efbf7f78dc0a79a387b29fde6ff56d3731).
+
+Hardware regression should compare the candidate against v0.2.0 on the same
+kernel, controller, peer, MTU and offload settings. Measure bidirectional iperf3
+throughput and retransmissions, CPU/interrupt load, and latency; exercise bridge
+forwarding and reconnection during traffic. Confirm the route is Thunderbolt
+and exclude local-tunnel effects. Test the new-core API path as well as an
+older-core fallback. CI and QEMU do not establish physical DMA behavior or
+performance. Our merge recommendation is to complete this regression first;
+it is also required before declaring the new baseline hardware-validated.
+
 ## Compatibility decisions
 
 The frame-size helper uses the native core API when its associated public size

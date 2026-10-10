@@ -16,7 +16,8 @@ See [upstream maintenance](upstream-tracking.md).
 ## Before the next release
 
 - Complete the new baseline's hardware regression: bidirectional throughput,
-  payload integrity and connection recovery. Existing v0.2.0 results do not
+  payload integrity, retransmissions, CPU/interrupt load, latency, bridge forwarding
+  and connection recovery under matching test conditions. Existing v0.2.0 results do not
   validate the new upstream behavior.
 - Assess Arch packaging and matching distribution kernels independently.
 - Review mainline RC changes as early warnings; do not widen support gates

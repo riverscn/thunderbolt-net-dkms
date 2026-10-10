@@ -17,7 +17,9 @@ This branch rebases the driver on Linux 7.2.9, preserves the existing RX fixes,
 and adds reproducible upstream updates and a pinned stable-kernel CI gate.
 See [upstream maintenance](docs/upstream-tracking.md) for the workflow and
 [compatibility](docs/compatibility.md) for validation limits. It does not include
-the automatic-MTU experiment and has not been released.
+the automatic-MTU experiment and has not been released. No hardware performance
+gain over v0.2.0 has been established; the 128-microsecond interval matches the
+old core default. See [performance expectations](docs/upstream-tracking.md#performance-expectations-and-validation).
 
 ## Published version 0.2.0
 

@@ -37,3 +37,7 @@ The development baseline and reproducible update procedure are documented in
 [upstream maintenance](upstream-tracking.md). Hardware results above belong to
 v0.2.0, not this newer baseline. New kernel build evidence does not carry those
 hardware results forward automatically.
+
+No hardware performance improvement over v0.2.0 is claimed for the development
+baseline. In particular, the new throttling API retains the old 128-microsecond
+interval; see [performance expectations and hardware regression](upstream-tracking.md#performance-expectations-and-validation).
