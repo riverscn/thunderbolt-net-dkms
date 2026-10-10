@@ -30,6 +30,10 @@ def render(repository):
     download = f'{url}/releases/download/{tag}'
     docs = f'{url}/blob/{tag}/docs'
     deb = f'thunderbolt-net-dkms_{package.group(1)}_all.deb'
+    options = [line for line in (ROOT / 'packaging/thunderbolt-net.conf').read_text().splitlines()
+               if line.strip() and not line.lstrip().startswith('#')]
+    if len(options) != 1:
+        raise ValueError('packaging/thunderbolt-net.conf must hold one options line')
     return f'''## Installation / upgrade
 
 **{version}: Linux 7.2.9 driver baseline with older-kernel compatibility.**
@@ -93,7 +97,7 @@ the driver already loaded in memory.
 `/usr/lib/modprobe.d/thunderbolt-net.conf`, removed again with the package:
 
 ```conf
-options thunderbolt_net rx_segment=1 rx_segment_mtu=1500 rx_page_pool=1
+{options[0]}
 ```
 
 It enables the macOS TSO forwarding workaround and RX page recycling. Opt-in
@@ -145,7 +149,9 @@ sudo apt install --allow-downgrades ./thunderbolt-net-dkms_0.2.0-1_all.deb
 ```
 
 Confirm the downgrade succeeds. Refresh any affected initramfs, reload from an
-independent console or reboot, and verify the running version is `0.2.0`. For the older 0.1.1 baseline, see the
+independent console or reboot, and verify the running version is `0.2.0`. After
+a later upgrade, delete that `/etc` copy unless you changed it, or it keeps
+replacing the package defaults. For the older 0.1.1 baseline, see the
 [complete rollback steps]({docs}/installation.md#return-to-the-011-baseline).
 
 ## Changes in {tag}

@@ -95,7 +95,15 @@ options thunderbolt_net rx_segment=1 rx_segment_mtu=1500 rx_page_pool=1
 This enables oversized TCP RX normalization (the macOS TSO forwarding
 workaround) and RX page recycling ([design](rx-page-pool.md)) for the next
 module load. The file belongs to the package: upgrades replace it and removing
-the package deletes it, so the distribution driver never receives these options.
+the package deletes it, so no options remain once the package is gone.
+
+While the package is installed, the options apply to whichever `thunderbolt_net`
+loads. If DKMS has not built this module for the running kernel (a kernel
+outside the [supported range](compatibility.md), missing headers or a failed
+build), the distribution driver loads instead, logs
+`thunderbolt_net: unknown parameter 'rx_segment' ignored` (and likewise for the
+others) and runs without the workaround. Check with
+`dkms status -m thunderbolt-net` and `cat /sys/module/thunderbolt_net/version`.
 The module's built-in defaults are unchanged (all off), which matters only for
 direct source builds loaded without this file. The GRO header-length correction
 from 0.1.1 is active whenever this module is loaded, independent of options.
@@ -137,7 +145,8 @@ activates the on-disk module but is not performed by this package.
 ## Change or disable the defaults
 
 Copy the package file to `/etc/modprobe.d/` under the **same name** and edit the
-copy. A file of the same name in `/etc/modprobe.d/` replaces the one in
+copy. It then replaces the package file permanently, including any defaults
+that later versions change; review it after upgrades. A file of the same name in `/etc/modprobe.d/` replaces the one in
 `/usr/lib/modprobe.d/` (see [modprobe.d(5)](https://manpages.ubuntu.com/manpages/noble/man5/modprobe.d.5.html)),
 and package upgrades leave it alone:
 
@@ -167,6 +176,10 @@ keep the current behavior without one, create it before downgrading:
 ```sh
 sudo cp /usr/lib/modprobe.d/thunderbolt-net.conf /etc/modprobe.d/thunderbolt-net.conf
 ```
+
+That copy keeps replacing the package file after any later upgrade. When you
+upgrade again, delete it unless you changed it, so new package defaults apply:
+`sudo rm /etc/modprobe.d/thunderbolt-net.conf`.
 
 From a **new download directory**, verify and downgrade:
 

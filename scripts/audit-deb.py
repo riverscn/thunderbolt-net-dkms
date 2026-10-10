@@ -3,6 +3,7 @@
 import gzip
 import io
 import pathlib
+import re
 import subprocess
 import sys
 import tarfile
@@ -10,7 +11,17 @@ from privacy import findings
 
 # The only configuration the package installs: module defaults, not network state.
 MODPROBE_CONF = 'usr/lib/modprobe.d/thunderbolt-net.conf'
-EXPECTED_OPTIONS = 'options thunderbolt_net rx_segment=1 rx_segment_mtu=1500 rx_page_pool=1'
+SOURCE_CONF = pathlib.Path(__file__).resolve().parent.parent / 'packaging/thunderbolt-net.conf'
+
+
+def directives(text):
+    return [l for l in text.splitlines() if l.strip() and not l.lstrip().startswith('#')]
+
+
+EXPECTED = directives(SOURCE_CONF.read_text())
+# One options line for this driver's own parameters; never install/softdep
+# commands or options for other modules.
+ALLOWED = re.compile(r'options thunderbolt_net(?: (?:rx_segment|rx_segment_mtu|rx_page_pool|e2e)=[0-9A-Za-z]+)+')
 
 deb = pathlib.Path(sys.argv[1])
 errors = []
@@ -44,12 +55,13 @@ for option in ('--fsys-tarfile', '--ctrl-tarfile'):
             errors += [f'{name}: {hit}' for hit in findings(text)]
             if name == MODPROBE_CONF:
                 seen_conf = True
-                directives = [l for l in text.splitlines() if l.strip() and not l.lstrip().startswith('#')]
-                if directives != [EXPECTED_OPTIONS]:
-                    errors.append(f'{name}: expected only "{EXPECTED_OPTIONS}"')
+                if directives(text) != EXPECTED:
+                    errors.append(f'{name}: must match the single options line in {SOURCE_CONF.name}')
             if option == '--ctrl-tarfile' and name in ('postinst','prerm','postrm','preinst'):
                 if any(command in text for command in ('rmmod ', 'modprobe -r', 'ip link set', 'systemctl restart')):
                     errors.append(f'{name}: active network mutation in maintainer script')
+if len(EXPECTED) != 1 or not ALLOWED.fullmatch(EXPECTED[0]):
+    errors.append(f'{SOURCE_CONF.name}: expected one options line for thunderbolt_net parameters')
 if not seen_conf:
     errors.append(f'{MODPROBE_CONF}: missing package defaults')
 if errors:

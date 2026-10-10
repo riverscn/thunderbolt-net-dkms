@@ -15,6 +15,7 @@ README.md
 README.zh-CN.md
 SECURITY.md
 VERSION
+debian/NEWS
 debian/changelog
 debian/control
 debian/copyright

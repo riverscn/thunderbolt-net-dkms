@@ -92,6 +92,8 @@ options thunderbolt_net rx_segment=1 rx_segment_mtu=1500 rx_page_pool=1
 ```
 
 它启用 macOS TSO 转发修正和 RX 页面回收。该文件属于软件包，卸载时一并删除。
+若 DKMS 未为当前内核编译本模块，发行版驱动会收到这些参数并报警告后忽略，
+可用 `dkms status` 检查。
 以前版本要求手动创建的 `/etc/modprobe.d/thunderbolt-net-rx.conf` 和
 `thunderbolt-net-page-pool.conf` 设置的是相同的值，可以删除。
 

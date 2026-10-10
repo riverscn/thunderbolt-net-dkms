@@ -52,8 +52,11 @@ case "$selected" in */updates/dkms/*) ;; *) echo "DKMS override not selected: $s
 test "$(modinfo -k "$kernel" -F version thunderbolt_net)" = "$version"
 bash scripts/check-throttling.sh "$kernel" "$selected"
 test -z "$(find /lib/modules/"$kernel" -name 'tbnet_*test.ko*' -print -quit)"
-defaults='options thunderbolt_net rx_segment=1 rx_segment_mtu=1500 rx_page_pool=1'
-modprobe --showconfig | grep -qxF "$defaults" || { echo 'Package defaults not visible to modprobe' >&2; exit 1; }
+defaults=$(grep -v '^[[:space:]]*\(#\|$\)' packaging/thunderbolt-net.conf)
+# Capture first: under pipefail, grep -q exiting early can SIGPIPE modprobe.
+config=$(modprobe --showconfig)
+grep -qxF "$defaults" <<< "$config" || { echo 'Package defaults not visible to modprobe' >&2; exit 1; }
+test -s /usr/share/doc/thunderbolt-net-dkms/NEWS.Debian.gz
 dpkg --purge thunderbolt-net-dkms
 test ! -e /usr/lib/modprobe.d/thunderbolt-net.conf
 restored=$(modinfo -k "$kernel" -F filename thunderbolt_net)

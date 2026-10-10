@@ -67,6 +67,9 @@ class ReleaseTests(unittest.TestCase):
             (fixture / 'CHANGELOG.md').write_text(
                 '# Changelog\n\n## 0.4.0\n\n- Next release fixture.\n'
                 '\n## 0.3.0\n\n- Previous release fixture.\n')
+            (fixture / 'packaging').mkdir()
+            (fixture / 'packaging/thunderbolt-net.conf').write_text(
+                '# comment\noptions thunderbolt_net rx_segment=0\n')
             module.ROOT = fixture
             text = module.render('example/thunderbolt-net-dkms')
         self.assertIn('**0.4.0:', text.split('## Changes in ', 1)[0])
@@ -76,6 +79,7 @@ class ReleaseTests(unittest.TestCase):
         self.assertIn('## Changes in v0.4.0\n\n- Next release fixture.', text)
         self.assertNotIn('0.3.0', text)
         self.assertNotIn('Previous release fixture.', text)
+        self.assertIn('```conf\noptions thunderbolt_net rx_segment=0\n```', text)
 
     def test_rx_model_uses_the_tested_driver_functions(self):
         spec = importlib.util.spec_from_file_location(

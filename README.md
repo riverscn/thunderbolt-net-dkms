@@ -101,7 +101,9 @@ options thunderbolt_net rx_segment=1 rx_segment_mtu=1500 rx_page_pool=1
 ```
 
 This enables the macOS TSO forwarding workaround and RX page recycling. The file
-belongs to the package and is removed with it. Files that earlier versions asked
+belongs to the package and is removed with it. On a kernel DKMS has not built
+for, the distribution driver receives these options and ignores them with a
+warning; check `dkms status`. Files that earlier versions asked
 you to create, `/etc/modprobe.d/thunderbolt-net-rx.conf` and
 `thunderbolt-net-page-pool.conf`, set the same values and can be deleted.
 

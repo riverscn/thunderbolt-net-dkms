@@ -499,7 +499,9 @@ def main(argv=None):
     p.add_argument('--iface')
     p.add_argument('--peer', help='ping this address after reload')
     p.add_argument('--param', action='append', default=[], metavar='NAME=VALUE',
-                   help='e.g. rx_segment=1; repeatable; omitted means defaults')
+                   help='e.g. rx_page_pool=0; repeatable. Overrides modprobe.d; an omitted '
+                        'parameter takes its modprobe.d value (package defaults), not the '
+                        'module built-in default')
     p.add_argument('--timeout', type=int, default=60)
     p.add_argument('--force', action='store_true',
                    help='reload even if the default route uses the interface')
