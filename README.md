@@ -39,7 +39,9 @@ See [upstream maintenance](docs/upstream-tracking.md) for the workflow and
 [compatibility](docs/compatibility.md) for validation limits. It does not include
 the automatic-MTU experiment and has not been released. No hardware performance
 gain over v0.2.0 has been established; the 128-microsecond interval matches the
-old core default. See [performance expectations](docs/upstream-tracking.md#performance-expectations-and-validation).
+old core default. See [performance expectations](docs/upstream-tracking.md#performance-expectations-and-validation)
+and the [hardware regression](docs/upstream-validation.md): throughput matched
+v0.2.0, and on Linux 7.2.9 the throttling call avoided an 11–44× interrupt increase.
 
 ## Published version 0.2.0
 

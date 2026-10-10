@@ -36,7 +36,7 @@ The upstream changes have different purposes:
 
 | Change | Expected effect and limits |
 | --- | --- |
-| Ring interrupt throttling | The old core already programmed a fixed 128 microseconds. The new API moves that responsibility to service drivers, and this driver requests the same interval. This normally preserves behavior rather than adding a new optimization. Compared with an older external driver that leaves moderation unset on a new core, it may reduce interrupt/CPU overhead, with a latency tradeoff; this combination has not been measured here. |
+| Ring interrupt throttling | The old core already programmed a fixed 128 microseconds. The new API moves that responsibility to service drivers, and this driver requests the same interval. This preserves behavior rather than adding a new optimization. On Linux 7.2.9, a control build without the call had 11–44× more interrupts per GiB and about 20% lower download throughput, with about 0.1 ms lower ping latency ([measurements](upstream-validation.md#new-core-api-path-on-linux-729)). |
 | TX E2E disabled, RX E2E retained when negotiated | May restore transmission on controllers that stall waiting for end-to-end credits. The upstream report concerns affected hardware, not evidence of faster throughput on our working setup. |
 | Complete-packet RX accounting | Corrects packet/byte statistics. Changed counters are not evidence of higher application throughput. |
 | Frame-size helper and compatibility wrapper | API adaptation with no established performance improvement. |
@@ -52,6 +52,11 @@ and exclude local-tunnel effects. Test the new-core API path as well as an
 older-core fallback. CI and QEMU do not establish physical DMA behavior or
 performance. Our merge recommendation is to complete this regression first;
 it is also required before declaring the new baseline hardware-validated.
+
+The [upstream validation](upstream-validation.md) covers both paths on one
+controller and peer: the older-core fallback against v0.2.0 on Proxmox 7.0, and
+the new-core API on Linux 7.2.9 with the controller passed through to a VM.
+Physical disconnect during traffic, suspend/resume and long stress remain open.
 
 ## Compatibility decisions
 
@@ -152,8 +157,11 @@ Pushes, pull requests and manual workflow dispatch run the existing distribution
 matrix plus a checksum-pinned upstream stable kernel. The new job builds the
 kernel in a disposable container, boots packet/bridge/router/GRO tests in a
 no-NIC QEMU guest, and checks actual DKMS installation/removal and restoration
-of the kernel's original module. It is a release prerequisite. This does not
-exercise physical enumeration, NHI DMA, macOS or real throughput.
+of the kernel's original module. It is a release prerequisite. `scripts/check-throttling.sh` also
+checks that each built module uses `tb_ring_throttling()` exactly when its kernel
+provides it, and the pinned job requires the new API, so a detection failure
+cannot fall back silently. This does not exercise physical enumeration, NHI DMA,
+macOS or real throughput.
 
 An advisory job compares the baseline with kernel.org's latest stable and
 reports the current mainline candidate in the Actions summary. A newer release

@@ -33,8 +33,10 @@ MTU、DHCP、路由和其他卸载功能仍需分别排查。
 
 尚未证实这个分支比 0.2.0 有实机性能收益：128µs 是旧控制器驱动已有的节流值；
 TX E2E 调整主要修复部分控制器的发送停滞，RX 统计修正也不等于吞吐提升。
-合并前建议完成同条件的吞吐、重传、CPU/中断、延迟、桥接和重连回归，详见
-[性能预期与验证](docs/upstream-tracking.md#performance-expectations-and-validation)。
+详见[性能预期与验证](docs/upstream-tracking.md#performance-expectations-and-validation)。
+[实机回归](docs/upstream-validation.md)显示吞吐与 0.2.0 持平；在 Linux 7.2.9 上，
+若不调用节流接口，每 GiB 中断数会增加 11–44 倍，本分支的调用避免了这一退化。
+带流量物理断开、休眠唤醒与长时间压力测试仍未覆盖。
 
 ## 已发布的 0.2.0 版本
 

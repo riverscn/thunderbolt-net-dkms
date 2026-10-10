@@ -15,10 +15,10 @@ See [upstream maintenance](upstream-tracking.md).
 
 ## Before the next release
 
-- Complete the new baseline's hardware regression: bidirectional throughput,
-  payload integrity, retransmissions, CPU/interrupt load, latency, bridge forwarding
-  and connection recovery under matching test conditions. Existing v0.2.0 results do not
-  validate the new upstream behavior.
+- The new baseline's hardware regression is recorded in
+  [upstream validation](upstream-validation.md). Still open: physical disconnect
+  during traffic, suspend/resume, long stress, Linux 7.2 bridge forwarding and
+  more controllers. Watch the higher retransmission counts seen in one phase.
 - Assess Arch packaging and matching distribution kernels independently.
 - Review mainline RC changes as early warnings; do not widen support gates
   without builds and tests.
