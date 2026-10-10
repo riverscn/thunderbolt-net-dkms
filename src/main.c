@@ -165,6 +165,9 @@ struct tbnet_ring {
  * @napi: NAPI structure for Rx polling
  * @stats: Network statistics
  * @skb: Network packet that is currently processed on Rx path
+ * @rx_stopping: Gate new Rx scheduling and refill during teardown
+ * @rx_napi_active: NAPI has been enabled after initial ring priming
+ * @rx_ring_active: Rx ring has started and needs to be stopped
  * @command_id: ID used for next configuration protocol packet
  * @login_sent: ThunderboltIP login message successfully sent
  * @login_received: ThunderboltIP login message received from the remote
@@ -196,6 +199,9 @@ struct tbnet {
 	struct napi_struct napi;
 	struct tbnet_stats stats;
 	struct sk_buff *skb;
+	bool rx_stopping;
+	bool rx_napi_active;
+	bool rx_ring_active;
 	atomic_t command_id;
 	bool login_sent;
 	bool login_received;
@@ -387,6 +393,46 @@ static void tbnet_free_buffers(struct tbnet_ring *ring)
 	ring->prod = 0;
 }
 
+/* Callers must serialize prepare/quiesce and quiesce device DMA before freeing. */
+static int tbnet_rx_prepare(struct tbnet *net)
+{
+	WRITE_ONCE(net->rx_stopping, false);
+	return 0;
+}
+
+static void tbnet_rx_activate(struct tbnet *net)
+{
+	/* Priming and NAPI both update prod and the same frame slots. Keep
+	 * NAPI disabled until priming and path setup have finished. A completion
+	 * can already be pending, with its interrupt masked by start_poll, so
+	 * explicitly schedule the first poll rather than wait for another IRQ.
+	 */
+	napi_enable(&net->napi);
+	WRITE_ONCE(net->rx_napi_active, true);
+	napi_schedule(&net->napi);
+}
+
+static void tbnet_rx_quiesce(struct tbnet *net)
+{
+	WRITE_ONCE(net->rx_stopping, true);
+	if (net->rx_napi_active) {
+		napi_disable(&net->napi);
+		WRITE_ONCE(net->rx_napi_active, false);
+		/* napi_disable waits for ownership, not the poll function's
+		 * final return. Drain its IRQ-rearm tail before recycling rings.
+		 */
+		synchronize_net();
+	}
+	if (net->rx_ring_active) {
+		tb_ring_stop(net->rx_ring.ring);
+		net->rx_ring_active = false;
+	}
+	dev_kfree_skb_any(net->skb);
+	net->skb = NULL;
+	memset(&net->rx_hdr, 0, sizeof(net->rx_hdr));
+	tbnet_free_buffers(&net->rx_ring);
+}
+
 static void tbnet_tear_down(struct tbnet *net, bool send_logout)
 {
 	netif_carrier_off(net->dev);
@@ -407,15 +453,8 @@ static void tbnet_tear_down(struct tbnet *net, bool send_logout)
 				break;
 		}
 
-		/* Tear the paths down before stopping the rings.  This mirrors
-		 * tbnet_connected_work(), which enables the paths last so the
-		 * Rx ring is primed before packets can arrive.  Stopping a
-		 * ring zeroes its descriptor base and tbnet_free_buffers()
-		 * unmaps and frees the frame buffers, leaving anything still
-		 * in flight with nowhere to drain to;
-		 * __tb_path_deactivate_hop() then waits for the hop's
-		 * 'pending' bit, which on some host routers never clears in
-		 * that state.
+		/* Disable paths while the rings and their buffers can still drain
+		 * in-flight DMA. This reverses the order used during connection.
 		 */
 		ret = tb_xdomain_disable_paths(net->xd,
 					       net->local_transmit_path,
@@ -425,9 +464,8 @@ static void tbnet_tear_down(struct tbnet *net, bool send_logout)
 		if (ret)
 			netdev_warn(net->dev, "failed to disable DMA paths\n");
 
-		tb_ring_stop(net->rx_ring.ring);
+		tbnet_rx_quiesce(net);
 		tb_ring_stop(net->tx_ring.ring);
-		tbnet_free_buffers(&net->rx_ring);
 		tbnet_free_buffers(&net->tx_ring);
 
 		tb_xdomain_release_in_hopid(net->xd, net->remote_transmit_path);
@@ -529,7 +567,7 @@ static int tbnet_alloc_rx_buffers(struct tbnet *net, unsigned int nbuffers)
 	struct tbnet_ring *ring = &net->rx_ring;
 	struct device *dma_dev = tb_ring_dma_device(ring->ring);
 
-	while (nbuffers--) {
+	while (nbuffers-- && !READ_ONCE(net->rx_stopping)) {
 		unsigned int index = ring->prod & (TBNET_RING_SIZE - 1);
 		struct tbnet_frame *tf = &ring->frames[index];
 		dma_addr_t dma;
@@ -679,8 +717,12 @@ static void tbnet_connected_work(struct work_struct *work)
 	 * the Rx ring before any incoming packets are allowed to
 	 * arrive.
 	 */
+	ret = tbnet_rx_prepare(net);
+	if (ret)
+		goto err_release_hop;
 	tb_ring_start(net->tx_ring.ring);
 	tb_ring_start(net->rx_ring.ring);
+	net->rx_ring_active = true;
 
 	ret = tbnet_alloc_rx_buffers(net, TBNET_RING_SIZE);
 	if (ret)
@@ -699,6 +741,7 @@ static void tbnet_connected_work(struct work_struct *work)
 		goto err_free_tx_buffers;
 	}
 
+	tbnet_rx_activate(net);
 	netif_carrier_on(net->dev);
 	netif_start_queue(net->dev);
 
@@ -709,9 +752,9 @@ err_free_tx_buffers:
 	tbnet_free_buffers(&net->tx_ring);
 err_free_rx_buffers:
 err_stop_rings:
-	tb_ring_stop(net->rx_ring.ring);
-	tbnet_free_buffers(&net->rx_ring);
+	tbnet_rx_quiesce(net);
 	tb_ring_stop(net->tx_ring.ring);
+err_release_hop:
 	tb_xdomain_release_in_hopid(net->xd, net->remote_transmit_path);
 	tbnet_connect_failed(net);
 }
@@ -836,7 +879,11 @@ static int tbnet_poll(struct napi_struct *napi, int budget)
 	struct device *dma_dev = tb_ring_dma_device(net->rx_ring.ring);
 	unsigned int rx_packets = 0;
 
-	while (rx_packets < budget) {
+	/* RX allocation is not valid for budget 0. */
+	if (!budget)
+		return 0;
+
+	while (rx_packets < budget && !READ_ONCE(net->rx_stopping)) {
 		const struct thunderbolt_ip_frame_header *hdr;
 		unsigned int hdr_size = sizeof(*hdr);
 		struct sk_buff *skb = NULL;
@@ -954,9 +1001,10 @@ static int tbnet_poll(struct napi_struct *napi, int budget)
 	if (rx_packets >= budget)
 		return budget;
 
-	napi_complete_done(napi, rx_packets);
 	/* Re-enable the ring interrupt */
-	tb_ring_poll_complete(net->rx_ring.ring);
+	if (napi_complete_done(napi, rx_packets) &&
+	    !READ_ONCE(net->rx_stopping))
+		tb_ring_poll_complete(net->rx_ring.ring);
 
 	return rx_packets;
 }
@@ -965,7 +1013,8 @@ static void tbnet_start_poll(void *data)
 {
 	struct tbnet *net = data;
 
-	napi_schedule(&net->napi);
+	if (!READ_ONCE(net->rx_stopping) && READ_ONCE(net->rx_napi_active))
+		napi_schedule(&net->napi);
 }
 
 static int tbnet_open(struct net_device *dev)
@@ -1015,7 +1064,7 @@ static int tbnet_open(struct net_device *dev)
 	}
 	net->rx_ring.ring = ring;
 
-	napi_enable(&net->napi);
+	WRITE_ONCE(net->rx_stopping, true);
 	start_login(net);
 
 	return 0;
@@ -1025,10 +1074,9 @@ static int tbnet_stop(struct net_device *dev)
 {
 	struct tbnet *net = netdev_priv(dev);
 
-	napi_disable(&net->napi);
-
 	cancel_work_sync(&net->disconnect_work);
 	tbnet_tear_down(net, true);
+	tbnet_rx_quiesce(net);
 
 	tb_ring_free(net->rx_ring.ring);
 	net->rx_ring.ring = NULL;
