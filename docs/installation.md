@@ -4,8 +4,9 @@
 
 Use an x86-64 system with a supported kernel, matching development headers,
 DKMS >= 3.0.10, and an enabled Thunderbolt networking subsystem.
-The stock network driver must be a loadable module (`CONFIG_THUNDERBOLT_NET=m`);
-a driver built into the kernel cannot be replaced this way.
+The stock network driver must be a loadable module (`CONFIG_THUNDERBOLT_NET=m`
+or `CONFIG_USB4_NET=m`, depending on kernel). A driver built into the kernel
+cannot be replaced this way.
 
 ## Install prerequisites first
 
@@ -66,7 +67,7 @@ unless explicitly marked as a hardware test.
 Check `SHA256SUMS` against the release files, then:
 
 ```sh
-sudo apt install ./thunderbolt-net-dkms_0.1.1-1_all.deb
+sudo apt install ./thunderbolt-net-dkms_0.2.0-1_all.deb
 dkms status -m thunderbolt-net
 modinfo -n thunderbolt_net
 modinfo -F version thunderbolt_net
@@ -106,7 +107,7 @@ cat /sys/module/thunderbolt_net/parameters/rx_segment
 ethtool -S thunderbolt0
 ```
 
-Expected: module version `0.1.1`, `rx_segment` is `Y`, and normalization counters
+Expected: module version `0.2.0`, `rx_segment` is `Y`, and normalization counters
 increase under suitable traffic. Interface names can differ. An unload failure
 must be investigated; never force-remove a busy module. Reloading interrupts
 Thunderbolt networking, and peer negotiation may take time. Keep the console
@@ -116,6 +117,56 @@ If the module is included in an initramfs, update that image after installing
 or removing the override/configuration. On Debian-family systems the usual
 command is `sudo update-initramfs -u -k "$(uname -r)"`. Check its output. A reboot
 activates the on-disk module but is not performed by this package.
+
+## Enable or disable RX page recycling
+
+Version 0.2.0 adds a separate, default-off `rx_page_pool` switch. See the
+[RX lifecycle design](rx-page-pool.md). To opt in:
+
+```sh
+sudo install -m 644 \
+  /usr/share/doc/thunderbolt-net-dkms/examples/thunderbolt-net-page-pool.conf.example \
+  /etc/modprobe.d/thunderbolt-net-page-pool.conf
+```
+
+This file can coexist with `thunderbolt-net-rx.conf`: both contain `options`
+for `thunderbolt_net`, and [modprobe.d(5)](https://manpages.ubuntu.com/manpages/noble/man5/modprobe.d.5.html)
+combines their distinct parameters. Together they are equivalent to:
+
+```conf
+options thunderbolt_net rx_segment=1 rx_segment_mtu=1500 rx_page_pool=1
+```
+
+Separate files are a convenience, not a requirement. Use one layout and avoid
+repeating the same parameter with conflicting values. Removing the page-pool
+file leaves RX normalization configured; either change needs a module reload
+to affect the running driver.
+
+Reload from a console/independent connection as above and verify
+`cat /sys/module/thunderbolt_net/parameters/rx_page_pool` returns `Y`.
+To disable just the pool, remove that opt-in file (or set `rx_page_pool=0`), refresh
+an affected initramfs, then reload. Keep the RX normalization file if needed.
+The NAPI allocator/lifecycle changes remain active with the pool disabled.
+
+## Return to the 0.1.1 baseline
+
+For a complete rollback to the previous driver, use the previous release package.
+From a **new download directory**, verify and downgrade:
+
+```sh
+curl -fLO https://github.com/riverscn/thunderbolt-net-dkms/releases/download/v0.1.1/thunderbolt-net-dkms_0.1.1-1_all.deb
+curl -fLO https://github.com/riverscn/thunderbolt-net-dkms/releases/download/v0.1.1/SHA256SUMS
+sha256sum --check --ignore-missing SHA256SUMS && \
+  sudo apt install --allow-downgrades ./thunderbolt-net-dkms_0.1.1-1_all.deb
+sudo rm -f /etc/modprobe.d/thunderbolt-net-page-pool.conf
+```
+
+Confirm the package checksum is `OK` and the downgrade succeeds. Remove any
+`rx_page_pool` option you added elsewhere too; 0.1.1 does not support it. Retain
+`thunderbolt-net-rx.conf` if the TSO workaround is needed. Check `dkms status`,
+refresh any affected initramfs, then reload from an independent console or
+reboot. `cat /sys/module/thunderbolt_net/version` must report `0.1.1` afterward.
+Installing an older package does not replace the already loaded module.
 
 ## Secure Boot
 
@@ -139,12 +190,13 @@ To restore the distribution module:
 
 ```sh
 sudo apt purge thunderbolt-net-dkms
-sudo rm -f /etc/modprobe.d/thunderbolt-net-rx.conf
+sudo rm -f /etc/modprobe.d/thunderbolt-net-rx.conf \
+  /etc/modprobe.d/thunderbolt-net-page-pool.conf
 sudo depmod -a
 modinfo -n thunderbolt_net
 ```
 
-Remove only the opt-in file you created for this project. Confirm that `modinfo`
+Remove only the opt-in files you created for this project. Confirm that `modinfo`
 resolves to the distribution module. Refresh any affected initramfs, then reload
 `thunderbolt_net` from the console or reboot when convenient. Package removal
 does not replace the module already resident in memory. If DKMS reports a
@@ -154,10 +206,10 @@ collision or failed restoration, stop and inspect its state before reloading.
 
 ```sh
 sudo dkms add .
-sudo dkms install -m thunderbolt-net -v 0.1.1 -k "$(uname -r)"
+sudo dkms install -m thunderbolt-net -v 0.2.0 -k "$(uname -r)"
 ```
 
 For this installation method, remove with
-`sudo dkms remove -m thunderbolt-net -v 0.1.1 --all`, then follow the same
+`sudo dkms remove -m thunderbolt-net -v 0.2.0 --all`, then follow the same
 configuration/initramfs/reload steps. Do not mix manual and Debian-managed
 installations of the same version.

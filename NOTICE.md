@@ -13,6 +13,10 @@ The fragment-count check changes the maximum from a ring-derived bound to
 separate from the receive GSO workaround. It must not be presented as original
 work of this project or as an upstream TSO fix.
 
+Version 0.2.0 also backports three upstream connection-cleanup fixes. Their
+commit IDs and author attribution are listed in [RX lifecycle design](docs/rx-page-pool.md#upstream-fixes)
+and `upstream/provenance.json`.
+
 Project changes add `rx_fixup.c/.h`, module parameters, validation counters,
 the receive integration, an Ethernet-header-length/headroom correction for GRO,
 version metadata, an older-kernel speed-constant compatibility definition,

@@ -11,24 +11,26 @@ This is an independent project, not an upstream Linux, Apple, Intel, Ubuntu,
 Debian, or Proxmox release. It is not a general fix for cable enumeration,
 runtime power management, DHCP, or every TSO interoperability problem.
 
-## Status
+## Version 0.2.0
 
-- Derived from the Linux v7.0 driver; original notices are retained.
-- Version 0.1.1 corrects Ethernet-header accounting for GRO flow matching and
-  packet ordering. This correction is active with either `rx_segment` setting.
-- Hardware validation: Linux 7.0, macOS peer with TSO enabled, MTU 1500.
-- Native IPv4 throughput was within about 2% of the stock driver in three
-  alternating short trials. See [measurements and limits](docs/testing.md).
-- Real IPv4 Docker forwarding and synthetic IPv4/IPv6 bridge/router paths were
-  tested. Physical two-port bridge forwarding and long-duration stability have
-  not been fully validated.
-- Oversized TCP RX normalization remains disabled by default: `rx_segment=0`.
-- Initial packaging targets x86-64 Linux; see [compatibility](docs/compatibility.md).
+This iteration adds opt-in RX page recycling, serializes RX startup/teardown,
+and backports three upstream connection-cleanup fixes. It retains the 0.1.1
+GRO ordering correction and conservative oversized-TCP normalization.
 
-This remains an experimental development release. The next milestone will move
-the driver to a pinned current stable upstream release and add a focused compatibility layer
-for selected older kernels. That work, Linux 7.2 validation, and Arch packaging
-are **planned, not implemented in 0.1.1**. See the [roadmap](docs/roadmap.md).
+- `rx_page_pool=0` and `rx_segment=0` remain the defaults.
+- Page recycling and TCP normalization can be enabled independently.
+- The driver baseline remains Linux v7.0; Linux 7.2 and Arch packaging are
+  outside this iteration. See [compatibility](docs/compatibility.md).
+- See [RX lifecycle design](docs/rx-page-pool.md) and the current
+  [validation report](docs/validation.md) for measured results and coverage.
+
+An initial physical reconnect timed out; a manual retry restored the link and
+bidirectional transfer. Repeatability remains open and the PR stays draft.
+See the validation report for both observations.
+
+The package remains experimental. Use an independent management path when
+reloading; [rollback](docs/installation.md#return-to-the-011-baseline) is to
+0.1.1. No stable release is declared by this PR.
 
 ## Install and enable
 
@@ -54,7 +56,7 @@ the **exact running kernel**. See [prerequisite checks](docs/installation.md#ins
 Download the release package and verify `SHA256SUMS`, then install:
 
 ```sh
-sudo apt install ./thunderbolt-net-dkms_0.1.1-1_all.deb
+sudo apt install ./thunderbolt-net-dkms_0.2.0-1_all.deb
 dkms status -m thunderbolt-net
 modinfo -n thunderbolt_net
 ```
@@ -65,17 +67,46 @@ does not request an active module reload. The currently loaded module stays in
 memory until it is unloaded or the system reboots; `modinfo` describes the module
 on disk, not necessarily the one currently running.
 
-To enable the workaround on the next module load, after reviewing the
-[installation and rollback guide](docs/installation.md):
+The two optional configuration files can coexist in `/etc/modprobe.d/`:
+
+| File | Parameters | Purpose |
+| --- | --- | --- |
+| `thunderbolt-net-rx.conf` | `rx_segment=1 rx_segment_mtu=1500` | macOS TSO forwarding workaround |
+| `thunderbolt-net-page-pool.conf` | `rx_page_pool=1` | RX page recycling optimization |
+
+Both target `thunderbolt_net`. `modprobe` combines their distinct options; the
+second file does not replace the first. Install either independently, or both
+as shown below after reviewing the [installation guide](docs/installation.md):
 
 ```sh
-sudo install -m 644 packaging/thunderbolt-net-rx.conf.example \
+sudo install -m 644 \
+  /usr/share/doc/thunderbolt-net-dkms/examples/thunderbolt-net-rx.conf.example \
   /etc/modprobe.d/thunderbolt-net-rx.conf
+sudo install -m 644 \
+  /usr/share/doc/thunderbolt-net-dkms/examples/thunderbolt-net-page-pool.conf.example \
+  /etc/modprobe.d/thunderbolt-net-page-pool.conf
 ```
 
-Reload only from a console or independent management connection; it interrupts
-Thunderbolt networking. The guide covers Secure Boot, initramfs and recovery.
-The example is also installed under `/usr/share/doc/thunderbolt-net-dkms/examples/`.
+These paths are provided by the `.deb`; source checkouts also contain the
+examples under `packaging/`. Both files together are equivalent to:
+
+```conf
+options thunderbolt_net rx_segment=1 rx_segment_mtu=1500 rx_page_pool=1
+```
+
+Use either layout, avoiding duplicate or conflicting definitions of the same
+parameter. Separate files make it easy to disable page recycling independently.
+Changes apply on the next module load. Refresh an affected initramfs first;
+reload only from a console or independent management connection, since it
+interrupts Thunderbolt networking. After reloading or rebooting, verify:
+
+```sh
+cat /sys/module/thunderbolt_net/parameters/rx_segment
+cat /sys/module/thunderbolt_net/parameters/rx_segment_mtu
+cat /sys/module/thunderbolt_net/parameters/rx_page_pool
+```
+
+With both examples enabled, expect `Y`, `1500`, and `Y`, respectively.
 
 ## Build
 
@@ -95,7 +126,7 @@ the DKMS package and run only in a diskless QEMU guest with no external NIC.
 GitHub Actions checks source hygiene, builds on Ubuntu 24.04, Debian 13 and
 Ubuntu 26.04, runs kernel tests, and verifies package install/removal in isolated
 containers. Successful runs upload a `.deb`, an allowlisted source archive and
-SHA-256 checksums. A matching `v0.1.1` tag publishes an **experimental prerelease**
+SHA-256 checksums. A matching `v0.2.0` tag publishes an **experimental prerelease**
 only after all jobs pass. See [release procedure](docs/releasing.md).
 
 No private hardware runner or local network access is needed. Third-party

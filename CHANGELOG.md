@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.0 — unreleased
+
+- Add opt-in DMA-mapped RX page recycling (`rx_page_pool=1`), disabled by
+  default and independent of oversized TCP normalization (`rx_segment`).
+- Use NAPI SKB allocation; finish ring priming and DMA-path setup before NAPI
+  activation, and drain polling before releasing RX resources.
+- Handle zero-budget polling, interrupt rearming and partial setup failures.
+- Backport upstream DMA-path teardown, Rx HopID release and login-state fixes.
+- Add guest-only RX lifecycle regression tests and DMA synchronization controls
+  to CI. See `docs/validation.md` for the current hardware results.
+
 ## 0.1.1 — experimental
 
 - Keep the Ethernet header length at `ETH_HLEN` and reserve Thunderbolt

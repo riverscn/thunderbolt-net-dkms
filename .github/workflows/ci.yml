@@ -2,7 +2,7 @@ name: Build and test
 
 "on":
   push:
-    branches: [main]
+    branches: [main, 'experiment/**', 'feature/**']
     tags: ['v*']
   pull_request:
   workflow_dispatch:
@@ -46,6 +46,16 @@ jobs:
           persist-credentials: false
       - name: Build deb, run kernel tests, verify DKMS lifecycle
         run: bash scripts/ci-linux.sh
+      - name: Save RX lifecycle diagnostics
+        if: always() && matrix.image == 'ubuntu:26.04'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: rx-model-${{ github.sha }}
+          path: |
+            build/rx-page-pool/*.log
+            build/rx-page-pool/*.json
+          if-no-files-found: warn
+          retention-days: 14
       - name: Export source-only release artifacts
         if: matrix.image == 'ubuntu:24.04'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

@@ -9,21 +9,21 @@ TCP 包，先验证数据与校验和，再补充保守的 GSO 分段信息；�
 本项目是独立维护的实验，不代表 Linux、Apple、Intel 或任何发行版的官方修复。
 它不处理所有雷电枚举、热插拔、休眠、DHCP 或 TSO 问题。
 
-## 当前状态
+## 0.2.0 版本
 
-- 驱动基于 Linux v7.0，保留原始作者与许可证声明。
-- 0.1.1 修正 GRO 的以太网头长度识别，改善同一 TCP 流的收包顺序；
-  这项修正不依赖 `rx_segment` 参数，加载本版本后始终生效。
-- 实机测试为 Linux 7.0、macOS 开启 TSO、MTU 1500。
-- 三组交替短测中，本机 IPv4 吞吐与原驱动相差约 2% 以内。
-- 验证了实际 IPv4 Docker 转发及隔离内核的 IPv4/IPv6 网桥、路由路径。
-- 纯二层桥接的实机验收和长期稳定性验证仍有待完成。
-- 超大 TCP 包的 RX 规范化仍默认关闭，使用 `rx_segment=1` 显式启用。
-- 首版面向 x86-64；内核范围和测试层次见 [兼容性](docs/compatibility.md)。
+本次迭代增加可选的 RX 页面回收，串行化接收启动与停止流程，并回移三项上游
+连接清理修复。保留 0.1.1 的 GRO 顺序修正和保守的超大 TCP 包分段信息。
 
-当前版本作为开发基线保存。下一阶段计划更新到明确固定的上游最新稳定版驱动，
-集中维护旧内核兼容层，并增加 Linux 7.2 验证与 Arch 打包。
-这些工作**尚未在 0.1.1 中实现**，具体范围见 [开发路线](docs/roadmap.md)。
+- `rx_page_pool=0`、`rx_segment=0` 仍为默认值，两项功能分别启用。
+- 上游驱动基线仍为 Linux v7.0；本次不增加 Linux 7.2 支持或 Arch 打包。
+- 设计见 [RX 页面回收](docs/rx-page-pool.md)，实测结果和覆盖范围见
+  [当前验证报告](docs/validation.md)，内核范围见 [兼容性](docs/compatibility.md)。
+
+首次物理重连在观察窗口内超时，手动重试后已恢复连接和双向传输。重连的可重复性
+仍待验证，PR 暂保留 Draft；两次观察均记录在验证报告中。
+
+软件包仍为实验性项目。重新加载时应保留独立管理通路；需要完整恢复原行为时
+[回退到 0.1.1](docs/installation.md#return-to-the-011-baseline)。本 PR 不代表稳定版发布。
 
 ## 安装
 
@@ -51,7 +51,7 @@ sudo apt install build-essential dkms curl ca-certificates coreutils kmod ethtoo
 下载 release 包并通过 `SHA256SUMS` 校验后，再安装驱动：
 
 ```sh
-sudo apt install ./thunderbolt-net-dkms_0.1.1-1_all.deb
+sudo apt install ./thunderbolt-net-dkms_0.2.0-1_all.deb
 dkms status -m thunderbolt-net
 modinfo -n thunderbolt_net
 ```
@@ -60,9 +60,43 @@ modinfo -n thunderbolt_net
 安装过程不请求重载正在使用的网卡。`modinfo` 显示的是磁盘上的模块，不能单靠
 它确认内存中正在运行的模块已经切换。
 
-阅读 [安装与回退说明](docs/installation.md) 后，将示例配置安装到
-`/etc/modprobe.d/thunderbolt-net-rx.conf`，下次加载模块时生效。只在控制台或独立
-管理链路上重载 `thunderbolt_net`，因为这会中断雷电连接。
+两个可选配置文件可以同时放在 `/etc/modprobe.d/` 中：
+
+| 文件 | 参数 | 用途 |
+| --- | --- | --- |
+| `thunderbolt-net-rx.conf` | `rx_segment=1 rx_segment_mtu=1500` | macOS TSO 转发修正 |
+| `thunderbolt-net-page-pool.conf` | `rx_page_pool=1` | RX 页面回收优化 |
+
+它们都配置 `thunderbolt_net`，`modprobe` 会合并不同的参数，第二个文件不会覆盖
+第一个。可以分别启用；如需同时启用，阅读 [安装与回退说明](docs/installation.md) 后执行：
+
+```sh
+sudo install -m 644 \
+  /usr/share/doc/thunderbolt-net-dkms/examples/thunderbolt-net-rx.conf.example \
+  /etc/modprobe.d/thunderbolt-net-rx.conf
+sudo install -m 644 \
+  /usr/share/doc/thunderbolt-net-dkms/examples/thunderbolt-net-page-pool.conf.example \
+  /etc/modprobe.d/thunderbolt-net-page-pool.conf
+```
+
+以上示例由 `.deb` 安装；源码仓库中也可以在 `packaging/` 找到。两个文件一起使用
+等价于在一个配置文件中写入：
+
+```conf
+options thunderbolt_net rx_segment=1 rx_segment_mtu=1500 rx_page_pool=1
+```
+
+选择一种布局即可，避免重复或冲突地设置同一参数。分文件便于单独关闭页面回收。
+配置在下次加载模块时生效；若涉及 initramfs，应先更新它。只在控制台或独立管理
+链路上重载，因为这会中断雷电连接。重载或重启后检查实际参数：
+
+```sh
+cat /sys/module/thunderbolt_net/parameters/rx_segment
+cat /sys/module/thunderbolt_net/parameters/rx_segment_mtu
+cat /sys/module/thunderbolt_net/parameters/rx_page_pool
+```
+
+同时启用两个示例时，结果应依次为 `Y`、`1500`、`Y`。
 
 ## 构建与发布
 

@@ -23,6 +23,7 @@
 #include <linux/workqueue.h>
 
 #include <net/ip6_checksum.h>
+#include <net/page_pool/helpers.h>
 
 #include "trace.h"
 #include "rx_fixup.h"
@@ -150,6 +151,7 @@ struct tbnet_frame {
 };
 
 struct tbnet_ring {
+	struct page_pool *pool;
 	struct tbnet_frame frames[TBNET_RING_SIZE];
 	unsigned int cons;
 	unsigned int prod;
@@ -165,6 +167,9 @@ struct tbnet_ring {
  * @napi: NAPI structure for Rx polling
  * @stats: Network statistics
  * @skb: Network packet that is currently processed on Rx path
+ * @rx_stopping: Gate new Rx scheduling and refill during teardown
+ * @rx_napi_active: NAPI has been enabled after initial ring priming
+ * @rx_ring_active: Rx ring has started and needs to be stopped
  * @command_id: ID used for next configuration protocol packet
  * @login_sent: ThunderboltIP login message successfully sent
  * @login_received: ThunderboltIP login message received from the remote
@@ -196,6 +201,9 @@ struct tbnet {
 	struct napi_struct napi;
 	struct tbnet_stats stats;
 	struct sk_buff *skb;
+	bool rx_stopping;
+	bool rx_napi_active;
+	bool rx_ring_active;
 	atomic_t command_id;
 	bool login_sent;
 	bool login_received;
@@ -223,6 +231,11 @@ static const uuid_t tbnet_svc_uuid =
 		  0x97, 0xc6, 0x56, 0x64, 0xa9, 0x20, 0xc8, 0xdd);
 
 static struct tb_property_dir *tbnet_dir;
+
+/* Experimental RX page recycling, deliberately disabled by default. */
+static bool tbnet_rx_page_pool;
+module_param_named(rx_page_pool, tbnet_rx_page_pool, bool, 0444);
+MODULE_PARM_DESC(rx_page_pool, "Experimental RX page recycling (default: false)");
 
 /* Experimental receive workaround, deliberately disabled by default. */
 static bool tbnet_rx_segment;
@@ -377,16 +390,83 @@ static void tbnet_free_buffers(struct tbnet_ring *ring)
 
 		trace_tbnet_free_frame(i, tf->page, tf->frame.buffer_phy, dir);
 
-		if (tf->frame.buffer_phy)
-			dma_unmap_page(dma_dev, tf->frame.buffer_phy, size,
-				       dir);
-
-		__free_pages(tf->page, order);
+		if (ring->pool) {
+			page_pool_put_full_page(ring->pool, tf->page, false);
+		} else {
+			if (!ring->ring->is_tx || tf->frame.buffer_phy)
+				dma_unmap_page(dma_dev, tf->frame.buffer_phy, size, dir);
+			__free_pages(tf->page, order);
+		}
 		tf->page = NULL;
 	}
 
 	ring->cons = 0;
 	ring->prod = 0;
+}
+
+/* Callers must serialize prepare/quiesce and quiesce device DMA before freeing. */
+static int tbnet_rx_prepare(struct tbnet *net)
+{
+	struct page_pool_params p = {
+		.flags = PP_FLAG_DMA_MAP | PP_FLAG_DMA_SYNC_DEV,
+		.order = TBNET_RX_PAGE_ORDER,
+		.pool_size = TBNET_RING_SIZE,
+		.nid = NUMA_NO_NODE,
+		.dev = tb_ring_dma_device(net->rx_ring.ring),
+		.napi = &net->napi,
+		.dma_dir = DMA_FROM_DEVICE,
+		.offset = 0,
+		.max_len = TBNET_FRAME_SIZE,
+	};
+
+	if (tbnet_rx_page_pool) {
+		net->rx_ring.pool = page_pool_create(&p);
+		if (IS_ERR(net->rx_ring.pool)) {
+			int err = PTR_ERR(net->rx_ring.pool);
+
+			net->rx_ring.pool = NULL;
+			return err;
+		}
+	}
+	WRITE_ONCE(net->rx_stopping, false);
+	return 0;
+}
+
+static void tbnet_rx_activate(struct tbnet *net)
+{
+	/* Priming and NAPI both update prod and the same frame slots. Keep
+	 * NAPI disabled until priming and path setup have finished. A completion
+	 * can already be pending, with its interrupt masked by start_poll, so
+	 * explicitly schedule the first poll rather than wait for another IRQ.
+	 */
+	napi_enable(&net->napi);
+	WRITE_ONCE(net->rx_napi_active, true);
+	napi_schedule(&net->napi);
+}
+
+static void tbnet_rx_quiesce(struct tbnet *net)
+{
+	WRITE_ONCE(net->rx_stopping, true);
+	if (net->rx_napi_active) {
+		napi_disable(&net->napi);
+		WRITE_ONCE(net->rx_napi_active, false);
+		/* napi_disable waits for ownership, not the poll function's
+		 * final return. Drain its IRQ-rearm tail before recycling rings.
+		 */
+		synchronize_net();
+	}
+	if (net->rx_ring_active) {
+		tb_ring_stop(net->rx_ring.ring);
+		net->rx_ring_active = false;
+	}
+	dev_kfree_skb_any(net->skb);
+	net->skb = NULL;
+	memset(&net->rx_hdr, 0, sizeof(net->rx_hdr));
+	tbnet_free_buffers(&net->rx_ring);
+	if (net->rx_ring.pool) {
+		page_pool_destroy(net->rx_ring.pool);
+		net->rx_ring.pool = NULL;
+	}
 }
 
 static void tbnet_tear_down(struct tbnet *net, bool send_logout)
@@ -409,11 +489,9 @@ static void tbnet_tear_down(struct tbnet *net, bool send_logout)
 				break;
 		}
 
-		tb_ring_stop(net->rx_ring.ring);
-		tb_ring_stop(net->tx_ring.ring);
-		tbnet_free_buffers(&net->rx_ring);
-		tbnet_free_buffers(&net->tx_ring);
-
+		/* Disable paths while the rings and their buffers can still drain
+		 * in-flight DMA. This reverses the order used during connection.
+		 */
 		ret = tb_xdomain_disable_paths(net->xd,
 					       net->local_transmit_path,
 					       net->tx_ring.ring->hop,
@@ -421,6 +499,10 @@ static void tbnet_tear_down(struct tbnet *net, bool send_logout)
 					       net->rx_ring.ring->hop);
 		if (ret)
 			netdev_warn(net->dev, "failed to disable DMA paths\n");
+
+		tbnet_rx_quiesce(net);
+		tb_ring_stop(net->tx_ring.ring);
+		tbnet_free_buffers(&net->tx_ring);
 
 		tb_xdomain_release_in_hopid(net->xd, net->remote_transmit_path);
 		net->remote_transmit_path = 0;
@@ -519,50 +601,51 @@ static unsigned int tbnet_available_buffers(const struct tbnet_ring *ring)
 static int tbnet_alloc_rx_buffers(struct tbnet *net, unsigned int nbuffers)
 {
 	struct tbnet_ring *ring = &net->rx_ring;
-	int ret;
+	struct device *dma_dev = tb_ring_dma_device(ring->ring);
 
-	while (nbuffers--) {
-		struct device *dma_dev = tb_ring_dma_device(ring->ring);
+	while (nbuffers-- && !READ_ONCE(net->rx_stopping)) {
 		unsigned int index = ring->prod & (TBNET_RING_SIZE - 1);
 		struct tbnet_frame *tf = &ring->frames[index];
-		dma_addr_t dma_addr;
+		dma_addr_t dma;
+		int err;
 
 		if (tf->page)
 			break;
-
-		/* Allocate page (order > 0) so that it can hold maximum
-		 * ThunderboltIP frame (4kB) and the additional room for
-		 * SKB shared info required by build_skb().
-		 */
-		tf->page = dev_alloc_pages(TBNET_RX_PAGE_ORDER);
-		if (!tf->page) {
-			ret = -ENOMEM;
-			goto err_free;
+		if (ring->pool)
+			tf->page = page_pool_dev_alloc_pages(ring->pool);
+		else
+			tf->page = dev_alloc_pages(TBNET_RX_PAGE_ORDER);
+		if (!tf->page)
+			return -ENOMEM;
+		if (ring->pool) {
+			dma = page_pool_get_dma_addr(tf->page);
+		} else {
+			dma = dma_map_page(dma_dev, tf->page, 0,
+					   TBNET_RX_PAGE_SIZE, DMA_FROM_DEVICE);
+			if (dma_mapping_error(dma_dev, dma)) {
+				__free_pages(tf->page, TBNET_RX_PAGE_ORDER);
+				tf->page = NULL;
+				return -ENOMEM;
+			}
 		}
-
-		dma_addr = dma_map_page(dma_dev, tf->page, 0,
-					TBNET_RX_PAGE_SIZE, DMA_FROM_DEVICE);
-		if (dma_mapping_error(dma_dev, dma_addr)) {
-			ret = -ENOMEM;
-			goto err_free;
-		}
-
-		tf->frame.buffer_phy = dma_addr;
+		tf->frame.buffer_phy = dma;
 		tf->dev = net->dev;
-
-		trace_tbnet_alloc_rx_frame(index, tf->page, dma_addr,
-					   DMA_FROM_DEVICE);
-
-		tb_ring_rx(ring->ring, &tf->frame);
-
+		trace_tbnet_alloc_rx_frame(index, tf->page, dma, DMA_FROM_DEVICE);
+		err = tb_ring_rx(ring->ring, &tf->frame);
+		if (err) {
+			if (ring->pool) {
+				page_pool_put_full_page(ring->pool, tf->page, false);
+			} else {
+				dma_unmap_page(dma_dev, dma, TBNET_RX_PAGE_SIZE,
+					       DMA_FROM_DEVICE);
+				__free_pages(tf->page, TBNET_RX_PAGE_ORDER);
+			}
+			tf->page = NULL;
+			return err;
+		}
 		ring->prod++;
 	}
-
 	return 0;
-
-err_free:
-	tbnet_free_buffers(ring);
-	return ret;
 }
 
 static struct tbnet_frame *tbnet_get_tx_buffer(struct tbnet *net)
@@ -639,6 +722,14 @@ static int tbnet_alloc_tx_buffers(struct tbnet *net)
 	return 0;
 }
 
+static void tbnet_connect_failed(struct tbnet *net)
+{
+	/* Leave login_received set: only the peer can make it true again. */
+	mutex_lock(&net->connection_lock);
+	net->login_sent = false;
+	mutex_unlock(&net->connection_lock);
+}
+
 static void tbnet_connected_work(struct work_struct *work)
 {
 	struct tbnet *net = container_of(work, typeof(*net), connected_work);
@@ -660,6 +751,9 @@ static void tbnet_connected_work(struct work_struct *work)
 	ret = tb_xdomain_alloc_in_hopid(net->xd, net->remote_transmit_path);
 	if (ret != net->remote_transmit_path) {
 		netdev_err(net->dev, "failed to allocate Rx HopID\n");
+		if (ret >= 0)
+			tb_xdomain_release_in_hopid(net->xd, ret);
+		tbnet_connect_failed(net);
 		return;
 	}
 
@@ -670,8 +764,12 @@ static void tbnet_connected_work(struct work_struct *work)
 	 * the Rx ring before any incoming packets are allowed to
 	 * arrive.
 	 */
+	ret = tbnet_rx_prepare(net);
+	if (ret)
+		goto err_release_hop;
 	tb_ring_start(net->tx_ring.ring);
 	tb_ring_start(net->rx_ring.ring);
+	net->rx_ring_active = true;
 
 	ret = tbnet_alloc_rx_buffers(net, TBNET_RING_SIZE);
 	if (ret)
@@ -690,6 +788,7 @@ static void tbnet_connected_work(struct work_struct *work)
 		goto err_free_tx_buffers;
 	}
 
+	tbnet_rx_activate(net);
 	netif_carrier_on(net->dev);
 	netif_start_queue(net->dev);
 
@@ -699,11 +798,12 @@ static void tbnet_connected_work(struct work_struct *work)
 err_free_tx_buffers:
 	tbnet_free_buffers(&net->tx_ring);
 err_free_rx_buffers:
-	tbnet_free_buffers(&net->rx_ring);
 err_stop_rings:
-	tb_ring_stop(net->rx_ring.ring);
+	tbnet_rx_quiesce(net);
 	tb_ring_stop(net->tx_ring.ring);
+err_release_hop:
 	tb_xdomain_release_in_hopid(net->xd, net->remote_transmit_path);
+	tbnet_connect_failed(net);
 }
 
 static void tbnet_login_work(struct work_struct *work)
@@ -826,7 +926,11 @@ static int tbnet_poll(struct napi_struct *napi, int budget)
 	struct device *dma_dev = tb_ring_dma_device(net->rx_ring.ring);
 	unsigned int rx_packets = 0;
 
-	while (rx_packets < budget) {
+	/* RX allocation and page-pool operations are not valid for budget 0. */
+	if (!budget)
+		return 0;
+
+	while (rx_packets < budget && !READ_ONCE(net->rx_stopping)) {
 		const struct thunderbolt_ip_frame_header *hdr;
 		unsigned int hdr_size = sizeof(*hdr);
 		struct sk_buff *skb = NULL;
@@ -849,8 +953,12 @@ static int tbnet_poll(struct napi_struct *napi, int budget)
 		if (!frame)
 			break;
 
-		dma_unmap_page(dma_dev, frame->buffer_phy,
-			       TBNET_RX_PAGE_SIZE, DMA_FROM_DEVICE);
+		if (net->rx_ring.pool)
+			dma_sync_single_for_cpu(dma_dev, frame->buffer_phy,
+						TBNET_FRAME_SIZE, DMA_FROM_DEVICE);
+		else
+			dma_unmap_page(dma_dev, frame->buffer_phy,
+				       TBNET_RX_PAGE_SIZE, DMA_FROM_DEVICE);
 
 		tf = container_of(frame, typeof(*tf), frame);
 
@@ -863,7 +971,10 @@ static int tbnet_poll(struct napi_struct *napi, int budget)
 		if (!tbnet_check_frame(net, tf, hdr)) {
 			trace_tbnet_invalid_rx_ip_frame(hdr->frame_size,
 				hdr->frame_id, hdr->frame_index, hdr->frame_count);
-			__free_pages(page, TBNET_RX_PAGE_ORDER);
+			if (net->rx_ring.pool)
+				page_pool_put_full_page(net->rx_ring.pool, page, true);
+			else
+				__free_pages(page, TBNET_RX_PAGE_ORDER);
 			dev_kfree_skb_any(net->skb);
 			net->skb = NULL;
 			continue;
@@ -875,14 +986,19 @@ static int tbnet_poll(struct napi_struct *napi, int budget)
 
 		skb = net->skb;
 		if (!skb) {
-			skb = build_skb(page_address(page),
+			skb = napi_build_skb(page_address(page),
 					TBNET_RX_PAGE_SIZE);
 			if (!skb) {
-				__free_pages(page, TBNET_RX_PAGE_ORDER);
+				if (net->rx_ring.pool)
+					page_pool_put_full_page(net->rx_ring.pool, page, true);
+				else
+					__free_pages(page, TBNET_RX_PAGE_ORDER);
 				net->stats.rx_errors++;
 				break;
 			}
 
+			if (net->rx_ring.pool)
+				skb_mark_for_recycle(skb);
 			skb_reserve(skb, hdr_size);
 			skb_put(skb, frame_size);
 
@@ -944,9 +1060,10 @@ static int tbnet_poll(struct napi_struct *napi, int budget)
 	if (rx_packets >= budget)
 		return budget;
 
-	napi_complete_done(napi, rx_packets);
 	/* Re-enable the ring interrupt */
-	tb_ring_poll_complete(net->rx_ring.ring);
+	if (napi_complete_done(napi, rx_packets) &&
+	    !READ_ONCE(net->rx_stopping))
+		tb_ring_poll_complete(net->rx_ring.ring);
 
 	return rx_packets;
 }
@@ -955,7 +1072,8 @@ static void tbnet_start_poll(void *data)
 {
 	struct tbnet *net = data;
 
-	napi_schedule(&net->napi);
+	if (!READ_ONCE(net->rx_stopping) && READ_ONCE(net->rx_napi_active))
+		napi_schedule(&net->napi);
 }
 
 static int tbnet_open(struct net_device *dev)
@@ -1005,7 +1123,7 @@ static int tbnet_open(struct net_device *dev)
 	}
 	net->rx_ring.ring = ring;
 
-	napi_enable(&net->napi);
+	WRITE_ONCE(net->rx_stopping, true);
 	start_login(net);
 
 	return 0;
@@ -1015,10 +1133,9 @@ static int tbnet_stop(struct net_device *dev)
 {
 	struct tbnet *net = netdev_priv(dev);
 
-	napi_disable(&net->napi);
-
 	cancel_work_sync(&net->disconnect_work);
 	tbnet_tear_down(net, true);
+	tbnet_rx_quiesce(net);
 
 	tb_ring_free(net->rx_ring.ring);
 	net->rx_ring.ring = NULL;
