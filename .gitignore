@@ -22,3 +22,4 @@ __pycache__/
 *.tar.gz
 *.log
 .DS_Store
+/hw-results*/

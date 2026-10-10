@@ -41,6 +41,7 @@ scripts/audit-deb.py
 scripts/check-source.py
 scripts/ci-linux.sh
 scripts/ci-upstream.sh
+scripts/hw-test.py
 scripts/make-dist.py
 scripts/privacy.py
 scripts/qemu-test.py
@@ -71,6 +72,7 @@ tests/rx-lifecycle/kcsan.config
 tests/rx-lifecycle/run.py
 tests/rx-lifecycle/sanity.c
 tests/rx-lifecycle/tested-functions.json
+tests/test_hwtest.py
 tests/test_release.py
 tests/test_upstream.py
 upstream/main.c

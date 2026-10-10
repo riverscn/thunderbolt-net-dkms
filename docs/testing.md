@@ -74,3 +74,46 @@ a loaded module alone does not establish a working connection. Stop on a kernel
 fault or timeout. Physical disconnect testing requires a cable operator and an
 independent console/recovery path. Never load intentional sanitizer controls
 onto the hardware host.
+
+## Hardware test helper
+
+`scripts/hw-test.py` automates the throughput part of this procedure on the
+Linux host (Python 3.9+, `iperf3`, `ethtool`, `iproute2`; run as root so the
+kernel log can be checked). It does not install packages or switch DKMS
+versions; install the build under test first. Keep the host's default route
+off the Thunderbolt interface: reloading the module drops that link.
+
+On the Mac, start `iperf3 -s`. On the Linux host:
+
+```sh
+sudo python3 scripts/hw-test.py info --peer MAC_ADDRESS
+sudo python3 scripts/hw-test.py reload --peer MAC_ADDRESS --param rx_segment=1
+sudo python3 scripts/hw-test.py run --peer MAC_ADDRESS --phase v0.2.0
+# install the candidate package, then repeat with a new phase label
+sudo python3 scripts/hw-test.py run --peer MAC_ADDRESS --phase candidate
+sudo python3 scripts/hw-test.py summary
+```
+
+`run` alternates three uploads (macOS → Linux) and three downloads, mirrored
+between pairs, with 10-second measurements after one omitted second. Each run
+records receiver rate, retransmissions, interface and driver counter deltas,
+softnet drops and host softirq time per GiB, and checks that the interface byte
+counters cover the payload (`transport_verified`). It stops on a kernel warning,
+Oops or similar log entry, or an iperf3 timeout. Repeat the baseline phase after
+the candidate to bracket it. `reload` restores the interface MTU and bridge
+membership and waits for the peer; it refuses to run while the default route
+uses the interface unless `--force` is given.
+
+To measure bridge forwarding, run the client behind the bridge with
+`--exec-prefix`, for example `--exec-prefix "pct exec 101 --"` for a Proxmox
+container or `--exec-prefix "ip netns exec test"`. The counters are still
+read from the host's Thunderbolt interface.
+
+Results accumulate in `hw-results-DATE/` (`--output` to change). `results.csv`
+starts with the columns of [iperf3-results.csv](iperf3-results.csv). `summary`
+prints per-phase medians and changes against the first phase (`--baseline`),
+build identities, the environment and kernel log excerpts, with addresses,
+MAC addresses, UUIDs, home paths and the hostname replaced by labels. Review
+it before sharing; keep the `raw/` iperf3 JSON private. Mac-side details
+(macOS version, `sysctl net.inet.tcp.tso`, link speed) must be added by hand.
+Reconnection and physical disconnect checks remain manual.
