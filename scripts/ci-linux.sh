@@ -52,7 +52,11 @@ case "$selected" in */updates/dkms/*) ;; *) echo "DKMS override not selected: $s
 test "$(modinfo -k "$kernel" -F version thunderbolt_net)" = "$version"
 bash scripts/check-throttling.sh "$kernel" "$selected"
 test -z "$(find /lib/modules/"$kernel" -name 'tbnet_*test.ko*' -print -quit)"
+# Resolve the module and options as modprobe would, then load exactly that
+# in the guest and check the resulting parameters.
+python3 scripts/qemu-test.py --kernel "$kernel" --installed
 dpkg --purge thunderbolt-net-dkms
+test ! -e /usr/lib/modprobe.d/thunderbolt-net.conf
 restored=$(modinfo -k "$kernel" -F filename thunderbolt_net)
 test "$restored" = "$original"
 test "$(sha256sum "$restored" | cut -d ' ' -f 1)" = "$original_hash"

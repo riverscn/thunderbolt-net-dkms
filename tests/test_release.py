@@ -40,15 +40,18 @@ class ReleaseTests(unittest.TestCase):
         self.assertTrue(text.startswith('## Installation / upgrade\n'))
         for required in ('apt install build-essential dkms',
                          'linux-headers-$(uname -r)', 'proxmox-headers-$(uname -r)',
-                         'sha256sum --check', 'rx_page_pool=1',
-                         'thunderbolt-net-page-pool.conf.example',
+                         'sha256sum --check',
+                         'options thunderbolt_net rx_segment=1 rx_segment_mtu=1500 rx_page_pool=1',
+                         '/usr/lib/modprobe.d/thunderbolt-net.conf',
+                         '/etc/modprobe.d/thunderbolt-net.conf',
                          'parameters/rx_page_pool', '--allow-downgrades',
                          'thunderbolt-net-dkms_0.2.0-1_all.deb'):
             self.assertIn(required, opening)
         self.assertIn('validation.md', opening)
         older = opening.split('For the older 0.1.1 baseline', 1)[1]
         self.assertIn('installation.md#return-to-the-011-baseline', older.split('\n\n', 1)[0])
-        self.assertIn('disabled by default', opening)
+        self.assertIn('page recycling by default', opening)
+        self.assertNotIn('.conf.example', text)
         self.assertNotIn('riverscn/thunderbolt-net-dkms', text)
 
     def test_release_version_is_consistent_after_version_bump(self):
@@ -64,6 +67,9 @@ class ReleaseTests(unittest.TestCase):
             (fixture / 'CHANGELOG.md').write_text(
                 '# Changelog\n\n## 0.4.0\n\n- Next release fixture.\n'
                 '\n## 0.3.0\n\n- Previous release fixture.\n')
+            (fixture / 'packaging').mkdir()
+            (fixture / 'packaging/thunderbolt-net.conf').write_text(
+                '# comment\noptions thunderbolt_net rx_segment=0\n')
             module.ROOT = fixture
             text = module.render('example/thunderbolt-net-dkms')
         self.assertIn('**0.4.0:', text.split('## Changes in ', 1)[0])
@@ -73,6 +79,7 @@ class ReleaseTests(unittest.TestCase):
         self.assertIn('## Changes in v0.4.0\n\n- Next release fixture.', text)
         self.assertNotIn('0.3.0', text)
         self.assertNotIn('Previous release fixture.', text)
+        self.assertIn('```conf\noptions thunderbolt_net rx_segment=0\n```', text)
 
     def test_rx_model_uses_the_tested_driver_functions(self):
         spec = importlib.util.spec_from_file_location(

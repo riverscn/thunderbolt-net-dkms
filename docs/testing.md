@@ -52,6 +52,13 @@ Assertions cover:
 The ordering test emulates network-device header settings; it does not execute
 physical Thunderbolt probe or DMA. Test modules are excluded from DKMS installs.
 
+After the Debian package is installed, `qemu-test.py --kernel ... --installed`
+asks modprobe how it would load `thunderbolt_net`, requires the DKMS module and
+exactly the options from `packaging/thunderbolt-net.conf`, runs those `insmod`
+commands in the guest and checks `/sys/module/thunderbolt_net/parameters/`.
+`ci-linux.sh` runs it on every distribution in the matrix, so the packaged
+defaults are tested end to end, not only as a file in the package.
+
 ## RX lifecycle tests
 
 [tests/rx-lifecycle](../tests/rx-lifecycle/README.md) extracts ten production
@@ -90,7 +97,8 @@ that address once in the shell, then run the steps in the same shell:
 ```sh
 PEER=198.51.100.2   # replace with the Mac's Thunderbolt Bridge IP address
 sudo python3 scripts/hw-test.py info --peer "$PEER"
-sudo python3 scripts/hw-test.py reload --peer "$PEER" --param rx_segment=1
+sudo python3 scripts/hw-test.py reload --peer "$PEER" \
+  --param rx_segment=1 --param rx_segment_mtu=1500 --param rx_page_pool=1
 sudo python3 scripts/hw-test.py run --peer "$PEER" --phase v0.2.0
 # install the candidate package, then repeat with a new phase label
 sudo python3 scripts/hw-test.py run --peer "$PEER" --phase candidate
@@ -105,7 +113,12 @@ counters cover the payload (`transport_verified`). It stops on a kernel warning,
 Oops or similar log entry, or an iperf3 timeout. Repeat the baseline phase after
 the candidate to bracket it. `reload` restores the interface MTU and bridge
 membership and waits for the peer; it refuses to run while the default route
-uses the interface unless `--force` is given.
+uses the interface unless `--force` is given. `--param` values are added after
+the `modprobe.d` configuration and win; an omitted parameter keeps its
+configured value, which with the 0.3.0 package is `rx_segment=1
+rx_segment_mtu=1500 rx_page_pool=1`. Pass every parameter a comparison depends
+on explicitly (for example `--param rx_page_pool=0` for a pool-off phase) and
+check the `params` column of `results.csv`.
 
 To measure bridge forwarding, run the client behind the bridge with
 `--exec-prefix`, for example `--exec-prefix "pct exec 101 --"` for a Proxmox

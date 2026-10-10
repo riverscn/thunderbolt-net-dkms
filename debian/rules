@@ -19,6 +19,9 @@ override_dh_auto_install:
 	install -d $(DEST)/src
 	install -m 644 VERSION Makefile $(DEST)/
 	install -m 644 src/Makefile src/main.c src/trace.c src/trace.h src/rx_fixup.c src/rx_fixup.h src/compat.h $(DEST)/src/
+	# Package defaults; removed with the package, overridable from /etc.
+	install -D -m 644 packaging/thunderbolt-net.conf \
+		debian/thunderbolt-net-dkms/usr/lib/modprobe.d/thunderbolt-net.conf
 
 override_dh_dkms:
 	dh_dkms -- dkms.conf

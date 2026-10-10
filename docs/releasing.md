@@ -17,7 +17,7 @@
    prereleases, must start with a prominent installation/upgrade guide**, before
    the change list. Keep version-specific download links, checksum verification,
    prerequisite `apt update` / `apt install` commands (separate distribution
-   and Proxmox headers), installation, opt-in configuration, activation/verification,
+   and Proxmox headers), installation, default configuration, activation/verification,
    and a link to the full installation/rollback guide in that opening section.
    Review this generated text when installation requirements change.
 8. Create and push a tag matching `v$(cat VERSION)` on the exact branch commit

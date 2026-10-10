@@ -10,6 +10,11 @@
   their own moderation. Use the core frame-size helper when available.
 - Retain oversized TCP RX normalization, RX page recycling, lifecycle
   serialization and the GRO header-length correction unchanged in behavior.
+- Enable them by default: the package installs one modprobe file,
+  `/usr/lib/modprobe.d/thunderbolt-net.conf`, with
+  `rx_segment=1 rx_segment_mtu=1500 rx_page_pool=1`. It replaces the two opt-in
+  examples, is removed with the package, and can be overridden by
+  `/etc/modprobe.d/thunderbolt-net.conf`. Module built-in defaults stay off.
 - Allow Linux 6.8–6.19 and 7.0–7.2 in the DKMS build gate. Add checksum-pinned
   upstream-kernel CI and assert the throttling path of every built module.
 - Add a manual hardware test helper and record regression results: throughput

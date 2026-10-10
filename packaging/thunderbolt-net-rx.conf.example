@@ -1,3 +1,0 @@
-# Opt in only after reading docs/installation.md.
-# Install as /etc/modprobe.d/thunderbolt-net-rx.conf for the next module load.
-options thunderbolt_net rx_segment=1 rx_segment_mtu=1500

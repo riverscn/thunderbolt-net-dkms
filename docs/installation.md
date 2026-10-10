@@ -79,80 +79,109 @@ copy the module over the distribution's file or blacklist `thunderbolt_net`:
 blacklisting that name affects the replacement too. Concurrent third-party
 DKMS replacements for the same module are not supported.
 
-The package ships no enabled modprobe configuration, module-load service,
-network configuration, firewall rule, or power-management policy. The package
-does not itself request module reloads. System-wide DKMS hooks and policies are
+The package installs one modprobe configuration file with the driver defaults
+(next section). It ships no module-load service, network configuration, firewall
+rule, or power-management policy, and does not itself request module reloads. System-wide DKMS hooks and policies are
 administrator-controlled and may perform additional actions.
 
-## Explicitly enable RX normalization
+## Default configuration
 
-The GRO header-length correction in 0.1.1 is active whenever this module is
-loaded. The following opt-in only controls oversized TCP RX normalization.
+The package installs `/usr/lib/modprobe.d/thunderbolt-net.conf`:
 
-Copy the example from the source tree or installed documentation:
-
-```sh
-sudo install -m 644 \
-  /usr/share/doc/thunderbolt-net-dkms/examples/thunderbolt-net-rx.conf.example \
-  /etc/modprobe.d/thunderbolt-net-rx.conf
+```conf
+options thunderbolt_net rx_segment=1 rx_segment_mtu=1500 rx_page_pool=1
 ```
 
-From a local console or a separate management connection:
+This enables oversized TCP RX normalization (the macOS TSO forwarding
+workaround) and RX page recycling ([design](rx-page-pool.md)) for the next
+module load. The file belongs to the package: upgrades replace it and removing
+the package deletes it, so no options remain once the package is gone.
+
+While the package is installed, the options apply to whichever `thunderbolt_net`
+loads. If DKMS has not built this module for the running kernel (a kernel
+outside the [supported range](compatibility.md), missing headers or a failed
+build), the distribution driver loads instead, logs
+`thunderbolt_net: unknown parameter 'rx_segment' ignored` (and likewise for the
+others) and runs without the workaround. Check with
+`dkms status -m thunderbolt-net` and `cat /sys/module/thunderbolt_net/version`.
+The module's built-in defaults are unchanged (all off), which matters only for
+direct source builds loaded without this file. The GRO header-length correction
+from 0.1.1 is active whenever this module is loaded, independent of options.
+
+Earlier versions asked you to create `/etc/modprobe.d/thunderbolt-net-rx.conf`
+and `/etc/modprobe.d/thunderbolt-net-page-pool.conf`. They set the same values
+and can stay, but are no longer needed:
+
+```sh
+sudo rm -f /etc/modprobe.d/thunderbolt-net-rx.conf \
+  /etc/modprobe.d/thunderbolt-net-page-pool.conf
+```
+
+To activate the configuration, reload from a local console or a separate
+management connection, or reboot:
 
 ```sh
 sudo modprobe -r thunderbolt_net
 sudo modprobe thunderbolt_net
 cat /sys/module/thunderbolt_net/version
 cat /sys/module/thunderbolt_net/parameters/rx_segment
+cat /sys/module/thunderbolt_net/parameters/rx_segment_mtu
+cat /sys/module/thunderbolt_net/parameters/rx_page_pool
 ethtool -S thunderbolt0
 ```
 
-Expected: module version `0.3.0`, `rx_segment` is `Y`, and normalization counters
-increase under suitable traffic. Interface names can differ. An unload failure
-must be investigated; never force-remove a busy module. Reloading interrupts
-Thunderbolt networking, and peer negotiation may take time. Keep the console
-available until addressing and connectivity have returned.
+Expected: module version `0.3.0`, then `Y`, `1500` and `Y`, and normalization
+counters increase under suitable traffic. Interface names can differ. An unload
+failure must be investigated; never force-remove a busy module. Reloading
+interrupts Thunderbolt networking, and peer negotiation may take time. Keep the
+console available until addressing and connectivity have returned.
 
-If the module is included in an initramfs, update that image after installing
-or removing the override/configuration. On Debian-family systems the usual
-command is `sudo update-initramfs -u -k "$(uname -r)"`. Check its output. A reboot
+If the module is included in an initramfs, update that image after installing,
+upgrading or removing the package or changing the configuration. On
+Debian-family systems the usual command is
+`sudo update-initramfs -u -k "$(uname -r)"`. Check its output. A reboot
 activates the on-disk module but is not performed by this package.
 
-## Enable or disable RX page recycling
+## Change or disable the defaults
 
-Version 0.2.0 added a separate, default-off `rx_page_pool` switch. See the
-[RX lifecycle design](rx-page-pool.md). To opt in:
+Copy the package file to `/etc/modprobe.d/` under the **same name** and edit the
+copy. It then replaces the package file permanently, including any defaults
+that later versions change; review it after upgrades. A file of the same name in `/etc/modprobe.d/` replaces the one in
+`/usr/lib/modprobe.d/` (see [modprobe.d(5)](https://manpages.ubuntu.com/manpages/noble/man5/modprobe.d.5.html)),
+and package upgrades leave it alone:
 
 ```sh
-sudo install -m 644 \
-  /usr/share/doc/thunderbolt-net-dkms/examples/thunderbolt-net-page-pool.conf.example \
-  /etc/modprobe.d/thunderbolt-net-page-pool.conf
+sudo cp /usr/lib/modprobe.d/thunderbolt-net.conf /etc/modprobe.d/thunderbolt-net.conf
+sudoedit /etc/modprobe.d/thunderbolt-net.conf
 ```
 
-This file can coexist with `thunderbolt-net-rx.conf`: both contain `options`
-for `thunderbolt_net`, and [modprobe.d(5)](https://manpages.ubuntu.com/manpages/noble/man5/modprobe.d.5.html)
-combines their distinct parameters. Together they are equivalent to:
-
-```conf
-options thunderbolt_net rx_segment=1 rx_segment_mtu=1500 rx_page_pool=1
-```
-
-Separate files are a convenience, not a requirement. Use one layout and avoid
-repeating the same parameter with conflicting values. Removing the page-pool
-file leaves RX normalization configured; either change needs a module reload
-to affect the running driver.
-
-Reload from a console/independent connection as above and verify
-`cat /sys/module/thunderbolt_net/parameters/rx_page_pool` returns `Y`.
-To disable just the pool, remove that opt-in file (or set `rx_page_pool=0`), refresh
-an affected initramfs, then reload. Keep the RX normalization file if needed.
-The NAPI allocator/lifecycle changes remain active with the pool disabled.
+For example, `options thunderbolt_net rx_segment=1 rx_segment_mtu=1500 rx_page_pool=0`
+keeps the workaround and disables page recycling; `rx_segment=0` disables
+normalization. The NAPI allocator/lifecycle changes remain active with the pool
+disabled. Do not use a differently named file to override a value: modprobe
+reads files in name order and the kernel keeps the last value, so a name that
+sorts before `thunderbolt-net.conf` (such as `thunderbolt-net-local.conf`) has
+no effect. Refresh an affected initramfs, then reload as above and check the
+`parameters/` values.
 
 ## Return to the 0.2.0 driver
 
 Version 0.2.0 uses the Linux v7.0 driver baseline and supports the same
-`rx_segment`, `rx_segment_mtu` and `rx_page_pool` options, so existing opt-in
-files remain valid. From a **new download directory**, verify and downgrade:
+`rx_segment`, `rx_segment_mtu` and `rx_page_pool` options, but it does not
+install default configuration: the downgrade removes
+`/usr/lib/modprobe.d/thunderbolt-net.conf`, and 0.2.0 starts with every option
+off. An `/etc/modprobe.d/thunderbolt-net.conf` you created stays in effect. To
+keep the current behavior without one, create it before downgrading:
+
+```sh
+sudo cp /usr/lib/modprobe.d/thunderbolt-net.conf /etc/modprobe.d/thunderbolt-net.conf
+```
+
+That copy keeps replacing the package file after any later upgrade. When you
+upgrade again, delete it unless you changed it, so new package defaults apply:
+`sudo rm /etc/modprobe.d/thunderbolt-net.conf`.
+
+From a **new download directory**, verify and downgrade:
 
 ```sh
 curl -fLO https://github.com/riverscn/thunderbolt-net-dkms/releases/download/v0.2.0/thunderbolt-net-dkms_0.2.0-1_all.deb
@@ -179,9 +208,11 @@ sha256sum --check --ignore-missing SHA256SUMS && \
 sudo rm -f /etc/modprobe.d/thunderbolt-net-page-pool.conf
 ```
 
-Confirm the package checksum is `OK` and the downgrade succeeds. Remove any
-`rx_page_pool` option you added elsewhere too; 0.1.1 does not support it. Retain
-`thunderbolt-net-rx.conf` if the TSO workaround is needed. Check `dkms status`,
+Confirm the package checksum is `OK` and the downgrade succeeds. The downgrade
+removes the package defaults, and 0.1.1 does not support `rx_page_pool`: remove
+it from any file you created, such as `/etc/modprobe.d/thunderbolt-net.conf`.
+To keep the TSO workaround, leave only
+`options thunderbolt_net rx_segment=1 rx_segment_mtu=1500` in that file. Check `dkms status`,
 refresh any affected initramfs, then reload from an independent console or
 reboot. `cat /sys/module/thunderbolt_net/version` must report `0.1.1` afterward.
 Installing an older package does not replace the already loaded module.
@@ -199,22 +230,26 @@ See the [DKMS signing documentation](https://github.com/dkms-project/dkms#module
 
 ## Disable the workaround or remove the package
 
-To retain this module but disable normalization, remove the opt-in configuration
-or set `rx_segment=0`, then reload from an independent connection. The GRO
-header-length correction remains active; removing the package restores the
-distribution driver's behavior after the next module load.
+To retain this module but disable normalization, set `rx_segment=0` in
+`/etc/modprobe.d/thunderbolt-net.conf` ([change the defaults](#change-or-disable-the-defaults)),
+then reload from an independent connection. The GRO header-length correction
+remains active; removing the package restores the distribution driver's
+behavior after the next module load.
 
 To restore the distribution module:
 
 ```sh
 sudo apt purge thunderbolt-net-dkms
-sudo rm -f /etc/modprobe.d/thunderbolt-net-rx.conf \
+sudo rm -f /etc/modprobe.d/thunderbolt-net.conf \
+  /etc/modprobe.d/thunderbolt-net-rx.conf \
   /etc/modprobe.d/thunderbolt-net-page-pool.conf
 sudo depmod -a
 modinfo -n thunderbolt_net
 ```
 
-Remove only the opt-in files you created for this project. Confirm that `modinfo`
+Removing the package deletes `/usr/lib/modprobe.d/thunderbolt-net.conf`. Remove
+only the files in `/etc/modprobe.d/` that you created for this project; the
+distribution driver does not know these options. Confirm that `modinfo`
 resolves to the distribution module. Refresh any affected initramfs, then reload
 `thunderbolt_net` from the console or reboot when convenient. Package removal
 does not replace the module already resident in memory. If DKMS reports a
@@ -227,7 +262,15 @@ sudo dkms add .
 sudo dkms install -m thunderbolt-net -v 0.3.0 -k "$(uname -r)"
 ```
 
+This does not install the package defaults; the module then loads with every
+option off. To use them, install the same file under `/etc`:
+
+```sh
+sudo install -m 644 packaging/thunderbolt-net.conf /etc/modprobe.d/thunderbolt-net.conf
+```
+
 For this installation method, remove with
-`sudo dkms remove -m thunderbolt-net -v 0.3.0 --all`, then follow the same
-configuration/initramfs/reload steps. Do not mix manual and Debian-managed
+`sudo dkms remove -m thunderbolt-net -v 0.3.0 --all` and delete
+`/etc/modprobe.d/thunderbolt-net.conf`, then follow the same initramfs/reload
+steps. Do not mix manual and Debian-managed
 installations of the same version.
