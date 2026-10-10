@@ -7,6 +7,26 @@ It adds an opt-in receive workaround for oversized TCP packets from a peer:
 validate the packet, attach conservative GSO metadata, and retain the aggregate
 so local delivery stays fast and forwarding can segment when required.
 
+## What problem does this address?
+
+This project targets a specific Thunderbolt networking failure seen with a
+**Mac Thunderbolt Bridge** connected to a Linux host: uploads from **macOS to
+Linux** can become extremely slow when macOS TCP Segmentation Offload (TSO) is
+enabled. The same connection may appear usable in the reverse direction, or
+become less bad only after disabling TSO on the Mac.
+
+The workaround is for the Linux receive and bridge/forwarding path. With
+`rx_segment=1`, it validates the oversized TCP aggregate arriving from macOS
+and supplies conservative GSO information before Linux forwards it. This lets
+the Mac keep TSO enabled in the tested topology. It is relevant to searches for
+terms such as **macOS Thunderbolt Bridge slow upload**, **Mac to Linux
+Thunderbolt networking TSO**, **ThunderboltIP upload slow**, and **Proxmox
+Thunderbolt Bridge**.
+
+It does not claim that every slow Thunderbolt link has this cause. Cable or port
+enumeration, host-router firmware, power management, MTU, DHCP, routing and
+other offload interactions need separate diagnosis.
+
 This is an independent project, not an upstream Linux, Apple, Intel, Ubuntu,
 Debian, or Proxmox release. It is not a general fix for cable enumeration,
 runtime power management, DHCP, or every TSO interoperability problem.

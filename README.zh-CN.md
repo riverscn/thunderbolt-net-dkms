@@ -6,6 +6,22 @@
 TCP 包，先验证数据与校验和，再补充保守的 GSO 分段信息；本机仍接收聚合大包，
 转发时由 Linux 出口按需分段。
 
+## 它解决什么问题？
+
+本项目针对一个明确的雷电网络问题：**Mac 的 Thunderbolt Bridge（雷雳网桥）
+连接 Linux 后，在 macOS 开启 TCP Segmentation Offload（TSO）时，
+从 macOS 上传到 Linux 的速度可能极慢。反向传输可能看似正常；关闭 Mac 的
+TSO 后问题也可能缓解。
+
+修复作用在 Linux 的接收及桥接/转发路径。启用 `rx_segment=1` 后，驱动会验证
+来自 macOS 的超大 TCP 聚合包，并在 Linux 转发前补充保守的 GSO 信息；在已验证
+拓扑中，这允许 Mac 保持 TSO 开启。相关搜索词包括：**macOS Thunderbolt Bridge
+上传慢**、**Mac 到 Linux 雷电网络 TSO**、**ThunderboltIP upload slow**、
+**Proxmox 雷电网桥**。
+
+这不表示所有雷电链路慢都是同一原因。线缆或端口枚举、主机路由器固件、电源管理、
+MTU、DHCP、路由和其他卸载功能仍需分别排查。
+
 本项目是独立维护的实验，不代表 Linux、Apple、Intel 或任何发行版的官方修复。
 它不处理所有雷电枚举、热插拔、休眠、DHCP 或 TSO 问题。
 
