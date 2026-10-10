@@ -1,9 +1,9 @@
 # Upstream maintenance
 
-The `feature/upstream-tracking` branch starts from the released v0.2.0 mainline,
-not the automatic-MTU experiment. Its reviewed baseline is Linux **v7.2.9**,
-commit `5fce161649b4d779d1b76d9fcd52dc77779774b8` in `gregkh/linux`.
-This is development work, not a new published release or a change to v0.2.0.
+Version 0.3.0 starts from the released v0.2.0 mainline, not the automatic-MTU
+experiment. Its reviewed baseline is Linux **v7.2.9**, commit
+`5fce161649b4d779d1b76d9fcd52dc77779774b8` in `gregkh/linux`. It is unreleased
+and does not change the published v0.2.0.
 
 ## What is tracked
 
@@ -149,7 +149,8 @@ Update the kernel lock from the official release and its published checksum,
 and adjust the version gate only with matching-header test evidence. Keep
 source import, compatibility fixes, tests and documentation in reviewable
 commits. Before release, assign a new package version and run the installation,
-rollback and hardware checks; do not publish development artifacts as v0.2.0.
+rollback and hardware checks; never republish changed artifacts under an
+existing version.
 
 ## CI and update discovery
 

@@ -31,38 +31,30 @@ This is an independent project, not an upstream Linux, Apple, Intel, Ubuntu,
 Debian, or Proxmox release. It is not a general fix for cable enumeration,
 runtime power management, DHCP, or every TSO interoperability problem.
 
-## Development: upstream tracking
+## Version 0.3.0 (unreleased)
 
-This branch rebases the driver on Linux 7.2.9, preserves the existing RX fixes,
-and adds reproducible upstream updates and a pinned stable-kernel CI gate.
-See [upstream maintenance](docs/upstream-tracking.md) for the workflow and
-[compatibility](docs/compatibility.md) for validation limits. It does not include
-the automatic-MTU experiment and has not been released. No hardware performance
-gain over v0.2.0 has been established; the 128-microsecond interval matches the
-old core default. See [performance expectations](docs/upstream-tracking.md#performance-expectations-and-validation)
-and the [hardware regression](docs/upstream-validation.md): throughput matched
-v0.2.0, and on Linux 7.2.9 the throttling call avoided an 11–44× interrupt increase.
-
-## Published version 0.2.0
-
-This iteration adds opt-in RX page recycling, serializes RX startup/teardown,
-and backports three upstream connection-cleanup fixes. It retains the 0.1.1
-GRO ordering correction and conservative oversized-TCP normalization.
+This iteration rebases the driver on Linux 7.2.9 and keeps the existing RX
+changes: oversized-TCP normalization, optional page recycling, RX lifecycle
+serialization and the 0.1.1 GRO header correction.
 
 - `rx_page_pool=0` and `rx_segment=0` remain the defaults.
-- Page recycling and TCP normalization can be enabled independently.
-- The driver baseline remains Linux v7.0; Linux 7.2 and Arch packaging are
-  outside this iteration. See [compatibility](docs/compatibility.md).
-- See [RX lifecycle design](docs/rx-page-pool.md) and the current
-  [validation report](docs/validation.md) for measured results and coverage.
+- Upstream imports keep their original authorship; local integration and
+  older-kernel compatibility are separate commits. See
+  [upstream maintenance](docs/upstream-tracking.md).
+- The build gate allows x86-64 Linux 6.8–6.19 and 7.0–7.2. CI also builds a
+  checksum-pinned Linux 7.2.9 kernel. See [compatibility](docs/compatibility.md).
+- On Linux 7.2 and newer cores the driver requests the previous 128-microsecond
+  interrupt throttling itself; older cores keep their own moderation.
 
-An initial physical reconnect timed out; a manual retry restored the link and
-bidirectional transfer. Repeatability remains open.
-See the validation report for both observations.
+The [hardware regression](docs/upstream-validation.md) found throughput equal
+to 0.2.0 on a Linux 7.0 host. On Linux 7.2.9, a build without the throttling
+call had 11–44× more interrupts per GiB and about 20% lower download throughput.
+No performance gain over 0.2.0 is claimed. Physical disconnect during traffic,
+suspend/resume and long stress remain open.
 
 The package remains experimental. Use an independent management path when
-reloading; [rollback](docs/installation.md#return-to-the-011-baseline) is to
-0.1.1. Version 0.2.0 is a prerelease.
+reloading; [rollback](docs/installation.md#return-to-the-020-driver) is to 0.2.0.
+The [0.2.0 report](docs/validation.md) covers the previous Linux v7.0 baseline.
 
 ## Install and enable
 
@@ -88,7 +80,7 @@ the **exact running kernel**. See [prerequisite checks](docs/installation.md#ins
 Download the release package and verify `SHA256SUMS`, then install:
 
 ```sh
-sudo apt install ./thunderbolt-net-dkms_0.2.0-1_all.deb
+sudo apt install ./thunderbolt-net-dkms_0.3.0-1_all.deb
 dkms status -m thunderbolt-net
 modinfo -n thunderbolt_net
 ```
@@ -155,10 +147,10 @@ the DKMS package and run only in a diskless QEMU guest with no external NIC.
 
 ## CI and releases
 
-GitHub Actions checks source hygiene, builds on Ubuntu 24.04, Debian 13 and
-Ubuntu 26.04, runs kernel tests, and verifies package install/removal in isolated
-containers. Successful runs upload a `.deb`, an allowlisted source archive and
-SHA-256 checksums. A matching `v0.2.0` tag publishes an **experimental prerelease**
+GitHub Actions checks source hygiene, builds on Ubuntu 24.04, Debian 13,
+Ubuntu 26.04 and a pinned upstream Linux 7.2.9 kernel, runs kernel tests, and
+verifies package install/removal in isolated containers. Successful runs upload a `.deb`, an allowlisted source archive and
+SHA-256 checksums. A matching `v0.3.0` tag publishes an **experimental prerelease**
 only after all jobs pass. See [release procedure](docs/releasing.md).
 
 No private hardware runner or local network access is needed. Third-party
@@ -170,8 +162,8 @@ permissions and no release token.
 - [Installation, opt-in and rollback](docs/installation.md)
 - [Design and unsupported packet types](docs/design.md)
 - [Kernel compatibility](docs/compatibility.md)
-- [Upstream tracking and development roadmap](docs/roadmap.md)
-- [Tests and anonymized performance evidence](docs/testing.md)
+- [Upstream maintenance](docs/upstream-tracking.md) and [roadmap](docs/roadmap.md)
+- [Tests](docs/testing.md) and [current hardware validation](docs/upstream-validation.md)
 - [Privacy and safe bug reports](docs/privacy.md)
 - [Source provenance](NOTICE.md), [contributing](CONTRIBUTING.md), [security](SECURITY.md)
 

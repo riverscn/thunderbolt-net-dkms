@@ -1,7 +1,7 @@
 # Upstream baseline validation
 
-This report covers the `feature/upstream-tracking` candidate (Linux 7.2.9 driver
-baseline plus the retained local RX changes) on 2026-10-10. It does not change
+This report covers the 0.3.0 candidate (Linux 7.2.9 driver baseline plus the
+retained local RX changes) on 2026-10-10. It does not change
 the [v0.2.0 report](validation.md). Per-run results are in
 [upstream-iperf3-results.csv](upstream-iperf3-results.csv).
 

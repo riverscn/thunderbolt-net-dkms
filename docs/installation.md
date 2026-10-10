@@ -67,7 +67,7 @@ unless explicitly marked as a hardware test.
 Check `SHA256SUMS` against the release files, then:
 
 ```sh
-sudo apt install ./thunderbolt-net-dkms_0.2.0-1_all.deb
+sudo apt install ./thunderbolt-net-dkms_0.3.0-1_all.deb
 dkms status -m thunderbolt-net
 modinfo -n thunderbolt_net
 modinfo -F version thunderbolt_net
@@ -107,7 +107,7 @@ cat /sys/module/thunderbolt_net/parameters/rx_segment
 ethtool -S thunderbolt0
 ```
 
-Expected: module version `0.2.0`, `rx_segment` is `Y`, and normalization counters
+Expected: module version `0.3.0`, `rx_segment` is `Y`, and normalization counters
 increase under suitable traffic. Interface names can differ. An unload failure
 must be investigated; never force-remove a busy module. Reloading interrupts
 Thunderbolt networking, and peer negotiation may take time. Keep the console
@@ -120,7 +120,7 @@ activates the on-disk module but is not performed by this package.
 
 ## Enable or disable RX page recycling
 
-Version 0.2.0 adds a separate, default-off `rx_page_pool` switch. See the
+Version 0.2.0 added a separate, default-off `rx_page_pool` switch. See the
 [RX lifecycle design](rx-page-pool.md). To opt in:
 
 ```sh
@@ -148,9 +148,27 @@ To disable just the pool, remove that opt-in file (or set `rx_page_pool=0`), ref
 an affected initramfs, then reload. Keep the RX normalization file if needed.
 The NAPI allocator/lifecycle changes remain active with the pool disabled.
 
+## Return to the 0.2.0 driver
+
+Version 0.2.0 uses the Linux v7.0 driver baseline and supports the same
+`rx_segment`, `rx_segment_mtu` and `rx_page_pool` options, so existing opt-in
+files remain valid. From a **new download directory**, verify and downgrade:
+
+```sh
+curl -fLO https://github.com/riverscn/thunderbolt-net-dkms/releases/download/v0.2.0/thunderbolt-net-dkms_0.2.0-1_all.deb
+curl -fLO https://github.com/riverscn/thunderbolt-net-dkms/releases/download/v0.2.0/SHA256SUMS
+sha256sum --check --ignore-missing SHA256SUMS && \
+  sudo apt install --allow-downgrades ./thunderbolt-net-dkms_0.2.0-1_all.deb
+```
+
+Confirm the package checksum is `OK` and the downgrade succeeds. Check
+`dkms status`, refresh any affected initramfs, then reload from an independent
+console or reboot. `cat /sys/module/thunderbolt_net/version` must report `0.2.0`
+afterward. Installing an older package does not replace the already loaded module.
+
 ## Return to the 0.1.1 baseline
 
-For a complete rollback to the previous driver, use the previous release package.
+For the older baseline without page recycling, use the 0.1.1 release package.
 From a **new download directory**, verify and downgrade:
 
 ```sh
@@ -206,10 +224,10 @@ collision or failed restoration, stop and inspect its state before reloading.
 
 ```sh
 sudo dkms add .
-sudo dkms install -m thunderbolt-net -v 0.2.0 -k "$(uname -r)"
+sudo dkms install -m thunderbolt-net -v 0.3.0 -k "$(uname -r)"
 ```
 
 For this installation method, remove with
-`sudo dkms remove -m thunderbolt-net -v 0.2.0 --all`, then follow the same
+`sudo dkms remove -m thunderbolt-net -v 0.3.0 --all`, then follow the same
 configuration/initramfs/reload steps. Do not mix manual and Debian-managed
 installations of the same version.

@@ -2,16 +2,12 @@
 
 ## Current scope
 
-Version 0.2.0 retains the Linux v7.0 driver baseline, the oversized-TCP RX
-workaround and the 0.1.1 GRO header correction. It adds optional RX page
-recycling, lifecycle serialization and three attributed connection cleanup
-backports. See [design](rx-page-pool.md) and [compatibility](compatibility.md).
-
-## Current development branch
-
-`feature/upstream-tracking` selects Linux 7.2.9 and adds a reproducible update
-procedure, older-kernel compatibility and pinned upstream-kernel testing.
-See [upstream maintenance](upstream-tracking.md).
+Version 0.3.0 moves the driver baseline to Linux 7.2.9 with older-kernel
+compatibility, a reproducible update procedure and pinned upstream-kernel
+testing. It retains the oversized-TCP RX workaround, the 0.1.1 GRO header
+correction, optional RX page recycling and lifecycle serialization from 0.2.0.
+See [upstream maintenance](upstream-tracking.md), [design](rx-page-pool.md)
+and [compatibility](compatibility.md).
 
 ## Before the next release
 
