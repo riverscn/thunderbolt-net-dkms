@@ -17,6 +17,10 @@ and [compatibility](compatibility.md).
   more controllers. Watch the higher retransmission counts seen in one phase.
 - Assess Arch packaging (PKGBUILD/AUR). The pinned Arch kernel is tested in CI;
   `linux-lts` and other distribution kernels are not.
+- The macOS-to-Linux upload ceiling (about 24.5 Gbit/s against 28–30 Gbit/s
+  download) is not set by the Linux side; see the
+  [upload ceiling investigation](upstream-validation.md#upload-ceiling-mac-to-linux).
+  Deciding whether it is a macOS transmit limit needs a second peer device.
 - Review mainline RC changes as early warnings; do not widen support gates
   without builds and tests.
 
