@@ -24,8 +24,9 @@ GRO ordering correction and conservative oversized-TCP normalization.
 - See [RX lifecycle design](docs/rx-page-pool.md) and the current
   [validation report](docs/validation.md) for measured results and coverage.
 
-Physical reconnection did not recover within the latest five-minute test
-window; the PR remains draft. See the validation report for the observed failure.
+An initial physical reconnect timed out; a manual retry restored the link and
+bidirectional transfer. Repeatability remains open and the PR stays draft.
+See the validation report for both observations.
 
 The package remains experimental. Use an independent management path when
 reloading; [rollback](docs/installation.md#return-to-the-011-baseline) is to

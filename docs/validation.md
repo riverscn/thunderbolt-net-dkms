@@ -56,11 +56,29 @@ re-enumerate for at least 326 seconds of observation after disappearance,
 including the operator's unplug/replug interval. The host remained reachable,
 its boot identity was unchanged, and no new kernel warning/Oops/panic appeared.
 The upload did not recover; the test client was then stopped deliberately.
-**Physical reconnect acceptance failed in this window.** No reload or reboot
-was used to turn this result into a pass. Page recycling remains enabled for
-further operator testing; this PR stays draft pending recovery validation.
+**Physical reconnect acceptance failed in this window.** The test scripts
+performed no driver reload or host reboot during this window.
 
-Wired-uplink carrier flaps also occurred before the physical disconnect. The
+After the operator retried the physical connection, the peer enumerated and
+the bridge entered forwarding about one second later. A follow-up check found
+the same host boot identity and driver source version, with version 0.2.0 and
+page recycling still enabled. The macOS peer reported a 40 Gbit/s link and TSO
+enabled. Two fresh single-stream checks (10 seconds plus one omitted warmup
+second, bound to Thunderbolt and verified by interface/counter observations)
+received 24.47 Gbit/s upload and 28.72 Gbit/s download, with 0 and 2 TCP
+retransmissions respectively. RX/TX errors/drops, invalid packets and bad
+checksums did not increase. These recovery checks are separate from the
+24-run performance comparison above.
+
+**Connectivity and bidirectional transfer recovered after the manual retry.**
+The retry timing was not captured, so this does not measure plug-to-ready
+latency or establish why the first attempt timed out. The earlier unsuccessful
+window remains recorded; reproducible physical reconnection is still an open
+validation item and the PR remains draft.
+
+Wired-uplink carrier flaps occurred before and during the disconnected window.
+A later log review also found an Ethernet adapter reset, with its TX-timeout
+counter at one; the uplink was back at 2.5 Gbit/s at the recovery check. The
 observed log order was NIC carrier loss, then bond/bridge-port state changes;
 there is no evidence here that a bridge reset caused them. The reconnect
 failure occurred before creation of the network interface. Its cause is not
