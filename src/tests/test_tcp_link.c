@@ -22,12 +22,16 @@ static bool core_clamp;
 #endif
 module_param(core_clamp, bool, 0444);
 static unsigned long aggregates, rebuilt, failures, min_mss = 65535;
+static unsigned long rebuilt_gso, plain_over_path, max_plain_iplen;
 module_param(mode, uint, 0444);
 module_param(cap, uint, 0444);
 module_param(aggregates, ulong, 0444);
 module_param(rebuilt, ulong, 0444);
 module_param(failures, ulong, 0444);
 module_param(min_mss, ulong, 0444);
+module_param(rebuilt_gso, ulong, 0444);
+module_param(plain_over_path, ulong, 0444);
+module_param(max_plain_iplen, ulong, 0444);
 
 static struct sk_buff *wire_copy(struct sk_buff *skb)
 {
@@ -108,6 +112,17 @@ static netdev_tx_t link_xmit(struct sk_buff *skb, struct net_device *dev)
 				skb_shinfo(skb)->flags &= ~SKBFL_RX_GSO_MTU;
 #endif
 			rebuilt++;
+			if (skb_is_gso(skb)) {
+				rebuilt_gso++;
+			} else {
+				unsigned long iplen = skb->len - ETH_HLEN;
+
+				/* The fixture installs a 1280 route. These were GSO on
+				 * the sender, but RX normalization left them ordinary.
+				 */
+				plain_over_path += iplen > 1280;
+				max_plain_iplen = max(max_plain_iplen, iplen);
+			}
 		}
 	}
 	/* Like a virtual wire, discard route/socket state at the namespace edge. */

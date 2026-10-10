@@ -246,7 +246,7 @@ for ipv in 4 6; do
   $B sleep 1
   echo "TBNET_TCP_CASE ipv=$ipv policy=$policy route_mtu=1280"
   $IP netns exec sender /tcp-session client "$dest"
-  for metric in aggregates rebuilt failures min_mss; do
+  for metric in aggregates rebuilt failures min_mss rebuilt_gso plain_over_path max_plain_iplen; do
    echo "TBNET_TCP_METRIC $metric=$($B cat /sys/module/tbnet_tcp_test/parameters/$metric)"
   done
   kill "$server_pid" 2>/dev/null || true
@@ -310,10 +310,13 @@ done
                 r'TBNET_TCP_CASE ipv=(\d) policy=(\w+) route_mtu=(\d+)\s+'
                 r'TBNET_TCP success=(\d) sent=(\d+) pmtu=(\d+) snd_mss=(\d+) retrans=(\d+)'
                 r'\s+TBNET_TCP_METRIC aggregates=(\d+)\s+TBNET_TCP_METRIC rebuilt=(\d+)'
-                r'\s+TBNET_TCP_METRIC failures=(\d+)\s+TBNET_TCP_METRIC min_mss=(\d+)',
+                r'\s+TBNET_TCP_METRIC failures=(\d+)\s+TBNET_TCP_METRIC min_mss=(\d+)'
+                r'\s+TBNET_TCP_METRIC rebuilt_gso=(\d+)\s+TBNET_TCP_METRIC plain_over_path=(\d+)'
+                r'\s+TBNET_TCP_METRIC max_plain_iplen=(\d+)',
                 result.stdout):
             keys = ('ipv', 'policy', 'route_mtu', 'success', 'sent', 'pmtu',
-                    'snd_mss', 'retrans', 'aggregates', 'rebuilt', 'failures', 'min_mss')
+                    'snd_mss', 'retrans', 'aggregates', 'rebuilt', 'failures', 'min_mss',
+                    'rebuilt_gso', 'plain_over_path', 'max_plain_iplen')
             row = dict(zip(keys, match.groups()))
             assert row['failures'] == '0' and int(row['aggregates']) > 0, row
             if row['policy'] in ('preserve', 'capped') or (core_clamp and row['policy'] == 'auto'):
@@ -323,6 +326,8 @@ done
                 assert int(row['min_mss']) < 1280, row
             else:
                 assert int(row['rebuilt']) > 0, row
+            if row['policy'] == 'capped':
+                assert row['plain_over_path'] == '0', row
             sessions.append(row)
             print('TCP observation:', row)
         assert len(sessions) == (8 if core_clamp else 6), result.stdout[-10000:]
