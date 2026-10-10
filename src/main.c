@@ -1034,9 +1034,6 @@ static int tbnet_poll(struct napi_struct *napi, int budget)
 		if (last) {
 			struct sk_buff *next;
 
-			/* Count complete packets before pulling the Ethernet header. */
-			net->stats.rx_packets++;
-			net->stats.rx_bytes += skb->len;
 			net->skb = NULL;
 			if (tbnet_rx_segment) {
 				skb->dev = net->dev;
@@ -1056,6 +1053,11 @@ static int tbnet_poll(struct napi_struct *napi, int budget)
 					net->stats.rx_normalized_bytes += skb->len;
 				}
 			}
+			/* Count delivered packets, not ones rx_fixup dropped, before
+			 * pulling the Ethernet header.
+			 */
+			net->stats.rx_packets++;
+			net->stats.rx_bytes += skb->len;
 			while (skb) {
 				next = skb->next;
 				skb_mark_not_on_list(skb);
@@ -1138,8 +1140,13 @@ static int tbnet_open(struct net_device *dev)
 	net->rx_ring.ring = ring;
 
 #ifdef TBNET_HAVE_RING_THROTTLING
-	tb_ring_throttling(net->tx_ring.ring, TBNET_THROTTLING);
-	tb_ring_throttling(net->rx_ring.ring, TBNET_THROTTLING);
+	/* Configure both rings; a failure leaves that ring unmoderated but
+	 * the link usable.
+	 */
+	if (tb_ring_throttling(net->tx_ring.ring, TBNET_THROTTLING))
+		netdev_warn(dev, "failed to configure Tx ring throttling\n");
+	if (tb_ring_throttling(net->rx_ring.ring, TBNET_THROTTLING))
+		netdev_warn(dev, "failed to configure Rx ring throttling\n");
 #else
 	netdev_dbg(dev, "kernel lacks configurable ring throttling; using core defaults\n");
 #endif

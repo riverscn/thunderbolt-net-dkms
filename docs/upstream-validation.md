@@ -102,3 +102,9 @@ One controller/peer combination and bounded test windows are covered. Physical
 disconnect during traffic, suspend/resume, long stress, bridge forwarding on
 Linux 7.2 and other controllers were not tested for this candidate. VM results
 include virtualization effects and are compared only with each other.
+
+After these runs, RX packet/byte counting moved after RX normalization (dropped
+packets are no longer counted as delivered) and a warning was added when ring
+throttling cannot be configured. These change statistics and logging only, not
+the data path; both builds were compile-checked on Linux 7.0 and 7.2.9 and the
+RX lifecycle model reruns in CI, but the hardware runs above predate them.
