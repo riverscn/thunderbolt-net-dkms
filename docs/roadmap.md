@@ -15,7 +15,8 @@ and [compatibility](compatibility.md).
   [upstream validation](upstream-validation.md). Still open: physical disconnect
   during traffic, suspend/resume, long stress, Linux 7.2 bridge forwarding and
   more controllers. Watch the higher retransmission counts seen in one phase.
-- Assess Arch packaging and matching distribution kernels independently.
+- Assess Arch packaging (PKGBUILD/AUR). The pinned Arch kernel is tested in CI;
+  `linux-lts` and other distribution kernels are not.
 - Review mainline RC changes as early warnings; do not widen support gates
   without builds and tests.
 

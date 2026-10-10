@@ -41,6 +41,7 @@ release-files.txt
 scripts/audit-deb.py
 scripts/check-source.py
 scripts/check-throttling.sh
+scripts/ci-arch.sh
 scripts/ci-linux.sh
 scripts/ci-upstream.sh
 scripts/hw-test.py
@@ -62,6 +63,7 @@ src/tests/test_path.c
 src/tests/test_rx.c
 src/trace.c
 src/trace.h
+tests/kernels/arch.json
 tests/kernels/config
 tests/kernels/stable.json
 tests/rx-lifecycle/Makefile

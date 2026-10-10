@@ -1,0 +1,15 @@
+{
+  "kernel": "7.2.9-arch1-1",
+  "packages": [
+    {
+      "name": "linux",
+      "url": "https://archive.archlinux.org/packages/l/linux/linux-7.2.9.arch1-1-x86_64.pkg.tar.zst",
+      "sha256": "4e894947032a3d72c52a87924ceb9ddf7bc7a8a47575e95e552ce39dd2b2949e"
+    },
+    {
+      "name": "linux-headers",
+      "url": "https://archive.archlinux.org/packages/l/linux-headers/linux-headers-7.2.9.arch1-1-x86_64.pkg.tar.zst",
+      "sha256": "4ea8ea8cfa2699a14285e83977a0e253563fdb3a25f9983c7f8b8883e70bf3d5"
+    }
+  ]
+}

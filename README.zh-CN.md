@@ -121,7 +121,7 @@ dpkg-buildpackage --build=binary --no-sign
 make dist
 ```
 
-GitHub CI 包含源码隐私检查、三个发行版与固定版本 Linux 7.2.9 内核的编译、隔离 QEMU 内核测试，以及
+GitHub CI 包含源码隐私检查、三个发行版、固定版本 Linux 7.2.9 内核和固定版本 Arch Linux 7.2.9-arch1-1 内核的编译、隔离 QEMU 内核测试，以及
 Debian 安装/卸载/恢复原驱动验证。通过后生成 `.deb`、源码归档和 SHA-256 校验。
 推送与 `VERSION` 一致的版本标签时，发布实验性 prerelease。
 

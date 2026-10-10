@@ -140,8 +140,9 @@ the DKMS package and run only in a diskless QEMU guest with no external NIC.
 ## CI and releases
 
 GitHub Actions checks source hygiene, builds on Ubuntu 24.04, Debian 13,
-Ubuntu 26.04 and a pinned upstream Linux 7.2.9 kernel, runs kernel tests, and
-verifies package install/removal in isolated containers. Successful runs upload a `.deb`, an allowlisted source archive and
+Ubuntu 26.04, a pinned upstream Linux 7.2.9 kernel and the pinned Arch Linux
+`7.2.9-arch1-1` kernel, runs kernel tests, and verifies DKMS install/removal in
+isolated containers. Successful runs upload a `.deb`, an allowlisted source archive and
 SHA-256 checksums. A matching `v0.3.0` tag publishes an **experimental prerelease**
 only after all jobs pass. See [release procedure](docs/releasing.md).
 

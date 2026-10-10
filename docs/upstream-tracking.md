@@ -72,9 +72,9 @@ alone proves that an API is present.
 The DKMS gate permits x86-64 kernels in the existing 6.8–6.19 range and 7.0–7.2.
 That gate is not an exhaustive support claim. The CI matrix tests exact selected
 kernels; mainline release candidates and future kernel families are not silently
-enabled. Arch's matching `linux-headers`/`linux-lts-headers` and its kernel config
-remain separate from an upstream-source build; this project has no Arch package
-or Arch DKMS lifecycle gate yet.
+enabled. Arch's own kernel build and `linux-headers` layout are tested separately
+from the upstream-source build (see below); this project still has no Arch
+package, and `linux-lts` is not tested.
 
 ## Check and prepare an update
 
@@ -165,6 +165,14 @@ checks that each built module uses `tb_ring_throttling()` exactly when its kerne
 provides it, and the pinned job requires the new API, so a detection failure
 cannot fall back silently. This does not exercise physical enumeration, NHI DMA,
 macOS or real throughput.
+
+A separate job runs in an Arch Linux container with the `linux` and
+`linux-headers` packages pinned by URL and SHA-256 in `tests/kernels/arch.json`
+(Arch Linux Archive). It runs the same QEMU suite on that distribution kernel,
+installs and removes the module with Arch's `dkms`, and requires the new
+throttling API. Other packages in that container follow the rolling repository,
+so a toolchain update can change results without a change here; update the lock
+deliberately, like the upstream kernel lock.
 
 An advisory job compares the baseline with kernel.org's latest stable and
 reports the current mainline candidate in the Actions summary. A newer release
