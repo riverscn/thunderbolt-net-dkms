@@ -55,7 +55,6 @@ test -z "$(find /lib/modules/"$kernel" -name 'tbnet_*test.ko*' -print -quit)"
 # Resolve the module and options as modprobe would, then load exactly that
 # in the guest and check the resulting parameters.
 python3 scripts/qemu-test.py --kernel "$kernel" --installed
-test -s /usr/share/doc/thunderbolt-net-dkms/NEWS.Debian.gz
 dpkg --purge thunderbolt-net-dkms
 test ! -e /usr/lib/modprobe.d/thunderbolt-net.conf
 restored=$(modinfo -k "$kernel" -F filename thunderbolt_net)

@@ -26,6 +26,10 @@ ALLOWED = re.compile(r'options thunderbolt_net(?: (?:rx_segment|rx_segment_mtu|r
 deb = pathlib.Path(sys.argv[1])
 errors = []
 seen_conf = False
+# apt-listchanges announces the default change from this file; minimal
+# images may exclude /usr/share/doc on install, so check the package itself.
+NEWS = 'usr/share/doc/thunderbolt-net-dkms/NEWS.Debian.gz'
+seen_news = False
 if subprocess.check_output(['dpkg-deb', '-f', str(deb), 'Architecture'], text=True).strip() != 'all':
     errors.append('expected an Architecture: all source-only package')
 for option in ('--fsys-tarfile', '--ctrl-tarfile'):
@@ -53,6 +57,8 @@ for option in ('--fsys-tarfile', '--ctrl-tarfile'):
                 errors.append(f'{name}: unexpected binary payload')
                 continue
             errors += [f'{name}: {hit}' for hit in findings(text)]
+            if name == NEWS:
+                seen_news = True
             if name == MODPROBE_CONF:
                 seen_conf = True
                 if directives(text) != EXPECTED:
@@ -62,6 +68,8 @@ for option in ('--fsys-tarfile', '--ctrl-tarfile'):
                     errors.append(f'{name}: active network mutation in maintainer script')
 if len(EXPECTED) != 1 or not ALLOWED.fullmatch(EXPECTED[0]):
     errors.append(f'{SOURCE_CONF.name}: expected one options line for thunderbolt_net parameters')
+if not seen_news:
+    errors.append(f'{NEWS}: missing upgrade notice')
 if not seen_conf:
     errors.append(f'{MODPROBE_CONF}: missing package defaults')
 if errors:
