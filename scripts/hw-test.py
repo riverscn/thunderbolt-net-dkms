@@ -324,6 +324,14 @@ def cmd_reload(args):
             sys.exit(f'invalid parameter {p!r}')
         params.append(p)
     log = KernelLog()
+    # ifupdown's hotplug unit for the old netdev must finish stopping before the
+    # new one appears; otherwise its ifup never runs and the link stays down.
+    unit = f'ifup@{iface}.service'
+    managed = shutil.which('systemctl') and subprocess.run(
+        ['systemctl', 'is-active', '--quiet', unit]).returncode == 0
+    if managed:
+        print(f'stopping {unit}', flush=True)
+        subprocess.run(['systemctl', 'stop', unit], check=True, timeout=60)
     print(f'unloading {MODULE} ...', flush=True)
     # rmmod, not modprobe -r: the latter also unloads the unused Thunderbolt
     # core, dropping the USB4 link until the cable is replugged.
@@ -331,18 +339,27 @@ def cmd_reload(args):
     print(f"loading {MODULE} {' '.join(params)}", flush=True)
     subprocess.run(['modprobe', MODULE] + params, check=True, timeout=60)
     deadline = time.monotonic() + args.timeout
-    while time.monotonic() < deadline:
-        if read(f'/sys/class/net/{iface}/operstate') in ('up', 'unknown'):
-            break
+    while not pathlib.Path('/sys/class/net', iface).exists():
+        if time.monotonic() > deadline:
+            sys.exit(f'{iface} did not reappear within {args.timeout}s')
         time.sleep(0.5)
-    else:
-        sys.exit(f'{iface} did not come up within {args.timeout}s')
+    if managed:
+        subprocess.run(['udevadm', 'settle', '--timeout=10'], timeout=15)
+        print(f'starting {unit}', flush=True)
+        subprocess.run(['systemctl', 'start', unit], check=True, timeout=60)
     if mtu and read(f'/sys/class/net/{iface}/mtu') != mtu:
         subprocess.run(['ip', 'link', 'set', iface, 'mtu', mtu], check=True)
         print(f'restored mtu {mtu}')
     if master and master_of(iface) != master:
-        subprocess.run(['ip', 'link', 'set', iface, 'master', master, 'up'], check=True)
+        subprocess.run(['ip', 'link', 'set', iface, 'master', master], check=True)
         print(f're-attached {iface} to {master}')
+    subprocess.run(['ip', 'link', 'set', iface, 'up'], check=True)
+    while time.monotonic() < deadline:
+        if read(f'/sys/class/net/{iface}/carrier', '0') == '1':
+            break
+        time.sleep(0.5)
+    else:
+        sys.exit(f'{iface} had no carrier within {args.timeout}s')
     if args.peer:
         while time.monotonic() < deadline:
             if subprocess.run(['ping', '-c', '1', '-W', '1', args.peer],

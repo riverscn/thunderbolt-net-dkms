@@ -66,6 +66,10 @@ class ReleaseTests(unittest.TestCase):
         for name, text in texts.items():
             self.assertNotIn('modprobe -r thunderbolt_net', text, name)
             self.assertNotIn("['modprobe', '-r'", text, name)
+        # ifupdown hosts need the hotplug unit restarted around the reload.
+        for name in ('release notes', 'installation.md'):
+            self.assertIn('systemctl stop ifup@thunderbolt0.service', texts[name], name)
+            self.assertIn('systemctl start ifup@thunderbolt0.service', texts[name], name)
 
     def test_release_version_is_consistent_after_version_bump(self):
         spec = importlib.util.spec_from_file_location('notes', ROOT / 'scripts/release-notes.py')
