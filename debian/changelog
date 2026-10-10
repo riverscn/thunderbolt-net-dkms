@@ -1,3 +1,13 @@
+thunderbolt-net (0.2.0-1) unstable; urgency=medium
+
+  * Add RX page recycling and lifecycle fixes for version 0.2.0.
+  * Add opt-in DMA-mapped RX recycling and NAPI allocation/lifecycle changes.
+  * Add reproducible RX-core model tests and a missing-sync negative control.
+  * Serialize RX startup/teardown and backport upstream connection cleanup.
+  * Document bounded hardware evidence, opt-in configuration and rollback.
+
+ -- Shun Li <riverscn@gmail.com>  Fri, 09 Oct 2026 08:50:36 +0000
+
 thunderbolt-net (0.1.1-1) unstable; urgency=medium
 
   * Preserve the Ethernet header length for correct GRO flow matching.

@@ -6,3 +6,6 @@ docs/design.md
 docs/testing.md
 docs/compatibility.md
 docs/privacy.md
+docs/rx-page-pool.md
+docs/validation.md
+docs/iperf3-results.csv

@@ -33,6 +33,7 @@ docs/roadmap.md
 docs/rx-page-pool.md
 docs/testing.md
 docs/validation.md
+packaging/thunderbolt-net-page-pool.conf.example
 packaging/thunderbolt-net-rx.conf.example
 release-files.txt
 scripts/audit-deb.py

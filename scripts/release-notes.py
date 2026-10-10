@@ -32,7 +32,10 @@ def render(repository):
     deb = f'thunderbolt-net-dkms_{package.group(1)}_all.deb'
     return f'''## Installation / upgrade
 
-**Experimental, source-only DKMS package for x86-64 Linux.** Use a
+**0.2.0: optional RX page recycling and RX lifecycle fixes.**
+Page recycling is disabled by default. Review the
+[current validation report]({docs}/validation.md) before deployment.
+This is an experimental, source-only DKMS package for x86-64 Linux. Use a
 [supported kernel]({docs}/compatibility.md), its exact matching development
 headers, and DKMS >= 3.0.10.
 
@@ -97,19 +100,48 @@ sudo install -m 644 \\
 
 An existing opt-in configuration is retained on upgrade.
 
-**4. Activate and verify.** Reload from a local console or an independent
+**4. Opt in to the RX page recycling separately.** It is disabled by default;
+install this file to test `rx_page_pool=1`:
+
+```sh
+sudo install -m 644 \\
+  /usr/share/doc/thunderbolt-net-dkms/examples/thunderbolt-net-page-pool.conf.example \\
+  /etc/modprobe.d/thunderbolt-net-page-pool.conf
+```
+
+This does not replace the `rx_segment` setting. Shared NAPI/lifecycle changes
+are active even when page recycling is disabled; see the
+[RX lifecycle design]({docs}/rx-page-pool.md).
+
+**5. Activate and verify.** Reload from a local console or an independent
 management connection; this interrupts Thunderbolt networking:
 
 ```sh
 sudo modprobe -r thunderbolt_net && sudo modprobe thunderbolt_net
 cat /sys/module/thunderbolt_net/version
 cat /sys/module/thunderbolt_net/parameters/rx_segment
+cat /sys/module/thunderbolt_net/parameters/rx_page_pool
 ```
 
-Expect version `{version}` and, if opted in, `rx_segment` = `Y`. A reboot can be
+Expect version `{version}` and `Y` for each parameter you opted in to. A reboot can be
 used instead of a reload. If the module is in an initramfs, refresh that image
 first. Secure Boot may require enrolling the local DKMS signing key.
 See the **[full installation and rollback guide]({docs}/installation.md)**.
+
+**6. Rollback choices.** To disable only page recycling, remove
+`/etc/modprobe.d/thunderbolt-net-page-pool.conf`, refresh an affected initramfs and
+reload. For the **complete 0.1.1 baseline**, download and verify the
+[v0.1.1 package]({url}/releases/tag/v0.1.1) in a new directory, then:
+
+```sh
+sudo apt install --allow-downgrades ./thunderbolt-net-dkms_0.1.1-1_all.deb
+sudo rm -f /etc/modprobe.d/thunderbolt-net-page-pool.conf
+```
+
+Confirm the downgrade succeeds; remove any `rx_page_pool` option added elsewhere
+before loading 0.1.1. Keep `rx_segment` configured if needed. Refresh any affected
+initramfs, reload from an independent console or reboot, and verify the running
+version is `0.1.1`. See the [complete rollback steps]({docs}/installation.md#return-to-the-011-baseline).
 
 ## Changes in {tag}
 
@@ -118,7 +150,9 @@ See the **[full installation and rollback guide]({docs}/installation.md)**.
 ## Validation and assets
 
 CI checks source/privacy rules, module builds, isolated QEMU packet tests, and
-DKMS installation/removal on three distributions. See
+DKMS installation/removal on three distributions. Ubuntu 26.04 additionally
+runs 63 RX model cases and a missing-sync negative control. KASAN/KCSAN experiments
+are documented manual runs, not hosted CI or actual Thunderbolt validation. See
 [testing and hardware limitations]({docs}/testing.md).
 
 Assets: source-only DKMS `.deb`, source archive, and `SHA256SUMS`.

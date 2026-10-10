@@ -31,6 +31,24 @@ class ReleaseTests(unittest.TestCase):
             b = module.create(pathlib.Path(tmp) / 'b.tar.gz')
             self.assertEqual(a.read_bytes(), b.read_bytes())
 
+    def test_release_has_install_opt_in_and_full_rollback(self):
+        spec = importlib.util.spec_from_file_location('notes', ROOT / 'scripts/release-notes.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        text = module.render('example/thunderbolt-net-dkms')
+        opening = text.split('## Changes in ', 1)[0]
+        self.assertTrue(text.startswith('## Installation / upgrade\n'))
+        for required in ('apt install build-essential dkms',
+                         'linux-headers-$(uname -r)', 'proxmox-headers-$(uname -r)',
+                         'sha256sum --check', 'rx_page_pool=1',
+                         'thunderbolt-net-page-pool.conf.example',
+                         'parameters/rx_page_pool', '--allow-downgrades',
+                         'thunderbolt-net-dkms_0.1.1-1_all.deb'):
+            self.assertIn(required, opening)
+        self.assertIn('validation.md', opening)
+        self.assertIn('disabled by default', opening)
+        self.assertNotIn('riverscn/thunderbolt-net-dkms', text)
+
     def test_rx_model_uses_the_tested_driver_functions(self):
         spec = importlib.util.spec_from_file_location(
             'extract', ROOT / 'tests/rx-lifecycle/extract.py')
