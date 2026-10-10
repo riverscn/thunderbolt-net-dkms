@@ -46,6 +46,8 @@ class ReleaseTests(unittest.TestCase):
                          'thunderbolt-net-dkms_0.2.0-1_all.deb'):
             self.assertIn(required, opening)
         self.assertIn('validation.md', opening)
+        older = opening.split('For the older 0.1.1 baseline', 1)[1]
+        self.assertIn('installation.md#return-to-the-011-baseline', older.split('\n\n', 1)[0])
         self.assertIn('disabled by default', opening)
         self.assertNotIn('riverscn/thunderbolt-net-dkms', text)
 

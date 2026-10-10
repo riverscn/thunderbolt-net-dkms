@@ -141,7 +141,7 @@ sudo apt install --allow-downgrades ./thunderbolt-net-dkms_0.2.0-1_all.deb
 Confirm the downgrade succeeds. Existing opt-in files remain valid. Refresh any
 affected initramfs, reload from an independent console or reboot, and verify the
 running version is `0.2.0`. For the older 0.1.1 baseline, see the
-[complete rollback steps]({docs}/installation.md#return-to-the-020-driver).
+[complete rollback steps]({docs}/installation.md#return-to-the-011-baseline).
 
 ## Changes in {tag}
 
