@@ -27,6 +27,7 @@ docs/compatibility.md
 docs/design.md
 docs/installation.md
 docs/iperf3-results.csv
+docs/mtu-exploration.md
 docs/privacy.md
 docs/releasing.md
 docs/roadmap.md

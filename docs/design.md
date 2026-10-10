@@ -26,6 +26,9 @@ many small packets on the driver receive path. `DODGY` invokes conservative GSO
 handling and prevents GRO from merging these synthesized boundaries further.
 
 Segment size is inferred from `min(interface MTU, rx_segment_mtu)` minus headers.
+On the unreleased MTU exploration branch, `rx_segment_mtu=0` instead selects
+the current ingress interface MTU; the default remains 1500. See
+[MTU exploration](mtu-exploration.md).
 The Thunderbolt transport does not supply the original TCP segment boundaries.
 This limitation matters for authentication and transport extensions.
 
@@ -70,7 +73,7 @@ arbitrary mixed-MTU forwarding safe.
 | Parameter | Default | Meaning |
 | --- | --- | --- |
 | `rx_segment` | false | Enable validated RX GSO metadata |
-| `rx_segment_mtu` | 1500 | IP segmentation cap, 68–65522 |
+| `rx_segment_mtu` | 1500 | IP segmentation cap, 68–65522; 0 tracks ingress MTU on the exploration branch |
 | `e2e` | true | Existing driver's end-to-end flow control option |
 
 Parameters are read-only after loading. `ethtool -S` exposes
