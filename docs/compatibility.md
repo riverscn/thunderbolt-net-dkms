@@ -16,8 +16,8 @@ from builds and guest-only tests.
 | Proxmox 7.0.14-23-pve | Manual hardware validation with a macOS peer |
 | Upstream Linux 7.2.9 | Pinned source build, QEMU, DKMS lifecycle and throttling-path CI |
 | Proxmox 7.0.14-23-pve | Manual hardware regression against v0.2.0 (older-core fallback) |
-| Arch Linux 7.2.9-arch1-1 | Manual build and passed-through controller test (new-core API path) |
-| Current Arch packages / mainline RC | Not validated as distribution packages |
+| Arch Linux 7.2.9-arch1-1 | Pinned-package CI (QEMU, Arch DKMS lifecycle, throttling path); manual passed-through controller test |
+| Arch packaging, `linux-lts`, mainline RC | No Arch package; not validated |
 
 The build gate permits x86-64 Linux 6.8–6.19 or 7.0–7.2. This is an allowed
 development range, not a promise that every intermediate/vendor kernel works.

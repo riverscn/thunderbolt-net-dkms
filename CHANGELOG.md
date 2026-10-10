@@ -11,7 +11,8 @@
 - Retain oversized TCP RX normalization, RX page recycling, lifecycle
   serialization and the GRO header-length correction unchanged in behavior.
 - Allow Linux 6.8–6.19 and 7.0–7.2 in the DKMS build gate. Add checksum-pinned
-  upstream-kernel CI and assert the throttling path of every built module.
+  upstream-kernel and Arch Linux kernel CI, and assert the throttling path of
+  every built module.
 - Add a manual hardware test helper and record regression results: throughput
   matched 0.2.0 on Linux 7.0, and on Linux 7.2.9 the throttling call avoided an
   11–44× increase in interrupts. See `docs/upstream-validation.md`.
