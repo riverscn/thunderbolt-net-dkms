@@ -101,13 +101,20 @@ administrator-controlled and may perform additional actions.
 The package installs `/usr/lib/modprobe.d/thunderbolt-net.conf`:
 
 ```conf
-options thunderbolt_net rx_segment=1 rx_segment_mtu=1500 rx_page_pool=1
+options thunderbolt_net rx_segment=1 rx_segment_mtu=1280 rx_page_pool=1
 ```
 
 This enables oversized TCP RX normalization (the macOS TSO forwarding
 workaround) and RX page recycling ([design](rx-page-pool.md)) for the next
 module load. The file belongs to the package: upgrades replace it and removing
 the package deletes it, so no options remain once the package is gone.
+
+`rx_segment_mtu` is the IP length of the segments rebuilt from the peer's TCP
+aggregates. It must not exceed the smallest MTU on any path those flows take
+beyond this host; a larger value stalls the peer's uploads through the host
+(0.3.0 shipped 1500, which did so behind a PPPoE uplink). The default 1280 is
+the IPv6 minimum and safe on any path. Raise it only when every egress path is
+known to carry larger packets; see [path MTU](path-mtu.md).
 
 While the package is installed, the options apply to whichever `thunderbolt_net`
 loads. If DKMS has not built this module for the running kernel (a kernel
@@ -145,7 +152,7 @@ cat /sys/module/thunderbolt_net/parameters/rx_page_pool
 ethtool -S thunderbolt0
 ```
 
-Expected: module version `0.3.0`, then `Y`, `1500` and `Y`, and normalization
+Expected: module version `0.3.1`, then `Y`, `1280` and `Y`, and normalization
 counters increase under suitable traffic. Interface names can differ.
 
 Use `rmmod`, not `modprobe -r`. Removing the network driver with modprobe also
@@ -199,7 +206,7 @@ sudo cp /usr/lib/modprobe.d/thunderbolt-net.conf /etc/modprobe.d/thunderbolt-net
 sudoedit /etc/modprobe.d/thunderbolt-net.conf
 ```
 
-For example, `options thunderbolt_net rx_segment=1 rx_segment_mtu=1500 rx_page_pool=0`
+For example, `options thunderbolt_net rx_segment=1 rx_segment_mtu=1280 rx_page_pool=0`
 keeps the workaround and disables page recycling; `rx_segment=0` disables
 normalization. The NAPI allocator/lifecycle changes remain active with the pool
 disabled. Do not use a differently named file to override a value: modprobe
@@ -256,7 +263,7 @@ Confirm the package checksum is `OK` and the downgrade succeeds. The downgrade
 removes the package defaults, and 0.1.1 does not support `rx_page_pool`: remove
 it from any file you created, such as `/etc/modprobe.d/thunderbolt-net.conf`.
 To keep the TSO workaround, leave only
-`options thunderbolt_net rx_segment=1 rx_segment_mtu=1500` in that file. Check `dkms status`,
+`options thunderbolt_net rx_segment=1 rx_segment_mtu=1280` in that file. Check `dkms status`,
 refresh any affected initramfs, then reload from an independent console or
 reboot. `cat /sys/module/thunderbolt_net/version` must report `0.1.1` afterward.
 Installing an older package does not replace the already loaded module.

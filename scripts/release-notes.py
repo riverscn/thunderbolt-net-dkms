@@ -101,8 +101,11 @@ the driver already loaded in memory.
 {options[0]}
 ```
 
-It enables the macOS TSO forwarding workaround and RX page recycling. Opt-in
-files from earlier versions set the same values and are no longer needed:
+It enables the macOS TSO forwarding workaround and RX page recycling.
+`rx_segment_mtu` must not exceed the smallest MTU on any path beyond this host
+(1280 is safe everywhere; 1500 stalled uploads behind a PPPoE uplink); raise it
+only for paths known to carry larger packets, see [path MTU]({docs}/path-mtu.md).
+Opt-in files from earlier versions set the same values and are no longer needed:
 
 ```sh
 sudo rm -f /etc/modprobe.d/thunderbolt-net-rx.conf \\

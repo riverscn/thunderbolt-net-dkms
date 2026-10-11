@@ -41,7 +41,7 @@ class ReleaseTests(unittest.TestCase):
         for required in ('apt install build-essential dkms',
                          'linux-headers-$(uname -r)', 'proxmox-headers-$(uname -r)',
                          'sha256sum --check',
-                         'options thunderbolt_net rx_segment=1 rx_segment_mtu=1500 rx_page_pool=1',
+                         'options thunderbolt_net rx_segment=1 rx_segment_mtu=1280 rx_page_pool=1',
                          '/usr/lib/modprobe.d/thunderbolt-net.conf',
                          '/etc/modprobe.d/thunderbolt-net.conf',
                          'parameters/rx_page_pool', '--allow-downgrades',

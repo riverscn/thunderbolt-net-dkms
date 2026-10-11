@@ -25,13 +25,23 @@ MTU、DHCP、路由和其他卸载功能仍需分别排查。
 本项目是独立维护的实验，不代表 Linux、Apple、Intel 或任何发行版的官方修复。
 它不处理所有雷电枚举、热插拔、休眠、DHCP 或 TSO 问题。
 
+## 0.3.1 版本
+
+本版本只改一个打包默认值：`rx_segment_mtu` 从 1500 改为 **1280**。它是宿主机
+把 Mac 的 TCP 聚合包重新切分时每段的 IP 长度，不能超过宿主机之后任何一跳的
+最小 MTU。设为 1500 时，Mac 经宿主机、再经 PPPoE（MTU 1492）上行到公网的上传
+只有 0.1 Mbit/s；设为 1280 后达到上行链路 39 Mbit/s 的上限。测量过程和何时
+应该调高（例如全程 jumbo 的局域网）见[路径 MTU](docs/path-mtu.md)。你自己创建的
+`/etc/modprobe.d/thunderbolt-net.conf` 会保留原值，升级后请检查。除内置默认值外
+驱动代码没有变化。
+
 ## 0.3.0 版本
 
 本次迭代将驱动基线更新到 Linux 7.2.9，并保留现有 RX 改动：超大 TCP 包分段信息、
 可选的 RX 页面回收、接收启动与停止的串行化，以及 0.1.1 的 GRO 顺序修正。
 
 - 软件包现在通过一个文件 `/usr/lib/modprobe.d/thunderbolt-net.conf` 默认启用
-  `rx_segment=1 rx_segment_mtu=1500 rx_page_pool=1`。该文件随软件包卸载而删除；
+  `rx_segment=1 rx_segment_mtu=1500 rx_page_pool=1`（0.3.1 起为 1280）。该文件随软件包卸载而删除；
   如需修改，在 `/etc/modprobe.d/` 下放一个同名文件。以前版本要求手动创建的
   两个配置文件已不再需要。
 - 上游提交保留原作者信息；本地集成和旧内核兼容是独立提交，参见
@@ -97,7 +107,7 @@ modinfo -n thunderbolt_net
 软件包把默认配置安装在 `/usr/lib/modprobe.d/thunderbolt-net.conf`：
 
 ```conf
-options thunderbolt_net rx_segment=1 rx_segment_mtu=1500 rx_page_pool=1
+options thunderbolt_net rx_segment=1 rx_segment_mtu=1280 rx_page_pool=1
 ```
 
 它启用 macOS TSO 转发修正和 RX 页面回收。该文件属于软件包，卸载时一并删除。
@@ -119,7 +129,7 @@ cat /sys/module/thunderbolt_net/parameters/rx_segment_mtu
 cat /sys/module/thunderbolt_net/parameters/rx_page_pool
 ```
 
-使用默认配置时，结果应依次为 `Y`、`1500`、`Y`。
+使用默认配置时，结果应依次为 `Y`、`1280`、`Y`。
 
 ## 构建与发布
 

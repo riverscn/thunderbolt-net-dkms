@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.1
+
+- Change the packaged and built-in `rx_segment_mtu` default from 1500 to 1280.
+  The cap is the IP length of segments rebuilt from a peer's TCP aggregates and
+  must not exceed the smallest path MTU beyond the host. Behind a PPPoE uplink
+  (MTU 1492), 1500 reduced macOS uploads through the host to 0.1 Mbit/s; 1280
+  restored the uplink's ceiling. See `docs/path-mtu.md`.
+- Document the cap's semantics, the measurement, common path limits and the
+  symptom of a value that is too large. An existing
+  `/etc/modprobe.d/thunderbolt-net.conf` keeps its own value.
+- Check the built-in default in the QEMU parameter test. No other driver change.
+
 ## 0.3.0
 
 - Rebase the driver on Linux 7.2.9. Upstream imports keep their original
