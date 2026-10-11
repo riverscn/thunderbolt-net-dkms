@@ -21,7 +21,7 @@ def directives(text):
 EXPECTED = directives(SOURCE_CONF.read_text())
 # One options line for this driver's own parameters; never install/softdep
 # commands or options for other modules.
-ALLOWED = re.compile(r'options thunderbolt_net(?: (?:rx_segment|rx_segment_mtu|rx_page_pool|e2e)=[0-9A-Za-z]+)+')
+ALLOWED = re.compile(r'options thunderbolt_net(?: (?:rx_segment|rx_segment_mtu|rx_segment_learn|rx_page_pool|e2e)=[0-9A-Za-z]+)+')
 
 deb = pathlib.Path(sys.argv[1])
 errors = []
