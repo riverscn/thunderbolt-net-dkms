@@ -73,13 +73,22 @@ sudo apt install build-essential dkms curl ca-certificates coreutils kmod ethtoo
 `uname -r` 完全匹配，PVE 的头文件不能用通用 Debian / Ubuntu 头文件替代。
 依赖检查方法见 [安装前置条件](docs/installation.md#install-prerequisites-first)。
 
-下载 release 包并通过 `SHA256SUMS` 校验后，再安装驱动：
+在一个**新的空目录**里下载最新 release 的安装包和校验文件，校验后安装：
 
 ```sh
-sudo apt install ./thunderbolt-net-dkms_0.3.0-1_all.deb
+curl -fsSL "https://api.github.com/repos/riverscn/thunderbolt-net-dkms/releases?per_page=1" \
+  | grep -oE '"browser_download_url": *"[^"]*(_all\.deb|/SHA256SUMS)"' | cut -d'"' -f4 \
+  | xargs -n1 curl -fLO
+sha256sum --check --ignore-missing SHA256SUMS && sudo apt install ./thunderbolt-net-dkms_*_all.deb
 dkms status -m thunderbolt-net
 modinfo -n thunderbolt_net
 ```
+
+第一条命令通过 GitHub API 取最新的 release（包含预发布版本；目前所有版本都是
+预发布，所以 GitHub 的 `releases/latest` 链接解析不到），下载其中的 `.deb` 和
+`SHA256SUMS`。确认校验输出为 `OK` 再安装。如需固定某个版本，到
+[Releases](https://github.com/riverscn/thunderbolt-net-dkms/releases) 页面下载
+该版本的这两个文件，然后执行同样的两条命令。
 
 `.deb` 包内是源码，由 DKMS 在目标机器上编译，不需要替换整个 Linux 内核。
 安装过程不请求重载正在使用的网卡。`modinfo` 显示的是磁盘上的模块，不能单靠
