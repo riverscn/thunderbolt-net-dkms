@@ -84,7 +84,7 @@ In a **new, empty directory**, download the newest release's package and
 checksum file, verify, and install:
 
 ```sh
-curl -fsSL "https://api.github.com/repos/riverscn/thunderbolt-net-dkms/releases?per_page=1" \
+curl -fsSL https://api.github.com/repos/riverscn/thunderbolt-net-dkms/releases/latest \
   | grep -oE '"browser_download_url": *"[^"]*(_all\.deb|/SHA256SUMS)"' | cut -d'"' -f4 \
   | xargs -n1 curl -fLO
 sha256sum --check --ignore-missing SHA256SUMS && sudo apt install ./thunderbolt-net-dkms_*_all.deb
@@ -92,11 +92,10 @@ dkms status -m thunderbolt-net
 modinfo -n thunderbolt_net
 ```
 
-The first command asks the GitHub API for the most recent release, including
-prereleases (every release so far is a prerelease, so GitHub's
-`releases/latest` link does not resolve), and downloads its `.deb` and
-`SHA256SUMS`. Confirm that the checksum line reports `OK` before installing. To
-pin a version instead, download both files from that release's page on
+The first command asks the GitHub API for the latest full release (prereleases
+are skipped) and downloads its `.deb` and `SHA256SUMS`. Confirm that the
+checksum line reports `OK` before installing. To install a prerelease or pin a
+version, download both files from that release's page on
 [Releases](https://github.com/riverscn/thunderbolt-net-dkms/releases) and run
 the same two commands.
 
