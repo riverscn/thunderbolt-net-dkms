@@ -53,6 +53,23 @@ above apply to both release-package and direct DKMS source installation.
 See the [Debian kernel header documentation](https://kernel-team.pages.debian.net/kernel-handbook/ch-packaging.html)
 and [Proxmox header package definitions](https://github.com/proxmox/pve-kernel/blob/master/debian/control.in).
 
+**Arch Linux:** there is no binary package yet. Build the DKMS package from a
+release with the `PKGBUILD` in [`packaging/arch/`](../packaging/arch/README.md):
+
+```sh
+sudo pacman -S --needed base-devel dkms linux-headers   # headers of your kernel variant
+git clone https://github.com/riverscn/thunderbolt-net-dkms.git
+cd thunderbolt-net-dkms && git checkout "v$(curl -fsSL https://raw.githubusercontent.com/riverscn/thunderbolt-net-dkms/main/VERSION)"
+cd packaging/arch && makepkg -si
+```
+
+Arch's `dkms` builds the module for every installed kernel with matching
+headers through its pacman hooks, and removes it again when the package is
+removed. The packaged defaults land in `/usr/lib/modprobe.d/thunderbolt-net.conf`
+as on Debian; the rest of this guide applies unchanged. CI builds, installs and
+removes this package against the pinned Arch kernel; `linux-lts` and other
+variants are untested, and the package is not on the AUR yet.
+
 Only when **building the Debian package itself from source**, also install:
 
 ```sh

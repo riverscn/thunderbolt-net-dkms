@@ -155,7 +155,7 @@ the DKMS package and run only in a diskless QEMU guest with no external NIC.
 GitHub Actions checks source hygiene, builds on Ubuntu 24.04, Debian 13,
 Ubuntu 26.04, a pinned upstream Linux 7.2.9 kernel and the pinned Arch Linux
 `7.2.9-arch1-1` kernel, runs kernel tests, and verifies DKMS install/removal in
-isolated containers. Successful runs upload a `.deb`, an allowlisted source archive and
+isolated containers, including the [Arch package](packaging/arch/README.md). Successful runs upload a `.deb`, an allowlisted source archive and
 SHA-256 checksums. A matching `v*` tag publishes a **prerelease** only after all
 jobs pass; promotion to a full release is a manual step after hardware
 validation. See [release procedure](docs/releasing.md).

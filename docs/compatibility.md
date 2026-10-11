@@ -17,7 +17,8 @@ from builds and guest-only tests.
 | Upstream Linux 7.2.9 | Pinned source build, QEMU, DKMS lifecycle and throttling-path CI |
 | Proxmox 7.0.14-23-pve | Manual hardware regression against v0.2.0 (older-core fallback) |
 | Arch Linux 7.2.9-arch1-1 | Pinned-package CI (QEMU, Arch DKMS lifecycle, throttling path); manual passed-through controller test |
-| Arch packaging, `linux-lts`, mainline RC | No Arch package; not validated |
+| Arch package (`packaging/arch/PKGBUILD`) | Built, installed and removed in CI against the pinned kernel; not yet on the AUR |
+| `linux-lts`, other Arch kernel variants, mainline RC | Not validated |
 
 The build gate permits x86-64 Linux 6.8–6.19 or 7.0–7.2. This is an allowed
 development range, not a promise that every intermediate/vendor kernel works.
@@ -45,4 +46,4 @@ No hardware performance improvement over v0.2.0 is claimed for the 7.2.9
 baseline. In particular, the new throttling API retains the old 128-microsecond
 interval; see [performance expectations and hardware regression](upstream-tracking.md#performance-expectations-and-validation).
 The Arch result comes from a VM with the controller passed through, not from a
-bare-metal Arch installation or an Arch package.
+bare-metal Arch installation; the Arch package has only been exercised in CI.

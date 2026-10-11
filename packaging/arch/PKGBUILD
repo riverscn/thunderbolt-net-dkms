@@ -1,0 +1,31 @@
+# Maintainer: Shun Li <riverscn@gmail.com>
+# Source-only DKMS package; the module is built for each installed kernel.
+pkgname=thunderbolt-net-dkms
+pkgver=0.4.0
+pkgrel=1
+pkgdesc="Out-of-tree thunderbolt_net driver with a receive-side workaround for macOS Thunderbolt Bridge TCP aggregates (DKMS)"
+arch=('x86_64')
+url="https://github.com/riverscn/thunderbolt-net-dkms"
+license=('GPL-2.0-only')
+depends=('dkms')
+# The release archive is reproducible; its hash is in the release's SHA256SUMS.
+source=("$pkgname-$pkgver.tar.gz::$url/releases/download/v$pkgver/$pkgname-$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+package() {
+    cd "$pkgname-$pkgver"
+    local dest="$pkgdir/usr/src/thunderbolt-net-$pkgver"
+    install -d "$dest/src"
+    install -m 644 VERSION Makefile dkms.conf "$dest/"
+    install -m 644 src/Makefile src/main.c src/trace.c src/trace.h \
+        src/rx_fixup.c src/rx_fixup.h src/compat.h "$dest/src/"
+    # Package defaults; removed with the package, overridable from /etc.
+    install -D -m 644 packaging/thunderbolt-net.conf \
+        "$pkgdir/usr/lib/modprobe.d/thunderbolt-net.conf"
+    install -D -m 644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+    install -m 644 README.zh-CN.md NOTICE.md CHANGELOG.md "$pkgdir/usr/share/doc/$pkgname/"
+    install -d "$pkgdir/usr/share/doc/$pkgname/docs"
+    install -m 644 docs/installation.md docs/design.md docs/path-mtu.md docs/testing.md \
+        docs/compatibility.md docs/rx-page-pool.md "$pkgdir/usr/share/doc/$pkgname/docs/"
+    install -D -m 644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
