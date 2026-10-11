@@ -39,7 +39,8 @@ def render(repository):
 **{version}: Linux 7.2.9 driver baseline with older-kernel compatibility.**
 The package now enables RX normalization and page recycling by default.
 Review the [current validation report]({docs}/upstream-validation.md) before deployment.
-This is an experimental, source-only DKMS package for x86-64 Linux. Use a
+This is a source-only DKMS package of an out-of-tree driver for x86-64 Linux;
+its hardware validation covers one controller and peer combination. Use a
 [supported kernel]({docs}/compatibility.md), its exact matching development
 headers, and DKMS >= 3.0.10.
 

@@ -28,8 +28,11 @@
    notes. Manual edits to a published release must retain the opening guide.
 
 Do not retag or overwrite a released version. Publish a new version for changes.
-Keep experimental releases marked prerelease until hardware and stability
-coverage justify a different status. Runtime hardware tests are not performed
+The workflow marks every new tag as a prerelease. Promote it to a full release
+by hand (`gh release edit vX.Y.Z --prerelease=false`) only after the hardware
+validation for that version is recorded in `docs/`; v0.3.0 was promoted on
+2026-10-11 after the regression in `docs/upstream-validation.md`. GitHub's
+`releases/latest` and the installation commands then resolve to it. Runtime hardware tests are not performed
 on public CI runners.
 
 The source archive normalizes ordering, uid/gid, permissions and timestamps.

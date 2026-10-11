@@ -46,7 +46,8 @@ MTU、DHCP、路由和其他卸载功能仍需分别排查。
 下降约 20%。本版本不宣称比 0.2.0 有性能提升。带流量物理断开、休眠唤醒与长时间
 压力测试仍未覆盖。
 
-软件包仍为实验性项目。重新加载时应保留独立管理通路；需要恢复时
+0.3.0 是第一个不带预发布标记的版本。驱动仍是树外模块，实机验证只覆盖一种
+控制器和对端组合。重新加载时应保留独立管理通路；需要恢复时
 [回退到 0.2.0](docs/installation.md#return-to-the-020-driver)。
 [0.2.0 验证报告](docs/validation.md)对应此前的 Linux v7.0 基线。
 
@@ -73,13 +74,21 @@ sudo apt install build-essential dkms curl ca-certificates coreutils kmod ethtoo
 `uname -r` 完全匹配，PVE 的头文件不能用通用 Debian / Ubuntu 头文件替代。
 依赖检查方法见 [安装前置条件](docs/installation.md#install-prerequisites-first)。
 
-下载 release 包并通过 `SHA256SUMS` 校验后，再安装驱动：
+在一个**新的空目录**里下载最新 release 的安装包和校验文件，校验后安装：
 
 ```sh
-sudo apt install ./thunderbolt-net-dkms_0.3.0-1_all.deb
+curl -fsSL https://api.github.com/repos/riverscn/thunderbolt-net-dkms/releases/latest \
+  | grep -oE '"browser_download_url": *"[^"]*(_all\.deb|/SHA256SUMS)"' | cut -d'"' -f4 \
+  | xargs -n1 curl -fLO
+sha256sum --check --ignore-missing SHA256SUMS && sudo apt install ./thunderbolt-net-dkms_*_all.deb
 dkms status -m thunderbolt-net
 modinfo -n thunderbolt_net
 ```
+
+第一条命令通过 GitHub API 取最新的正式 release（跳过预发布版本），下载其中的
+`.deb` 和 `SHA256SUMS`。确认校验输出为 `OK` 再安装。如需安装预发布版本或固定
+某个版本，到 [Releases](https://github.com/riverscn/thunderbolt-net-dkms/releases)
+页面下载该版本的这两个文件，然后执行同样的两条命令。
 
 `.deb` 包内是源码，由 DKMS 在目标机器上编译，不需要替换整个 Linux 内核。
 安装过程不请求重载正在使用的网卡。`modinfo` 显示的是磁盘上的模块，不能单靠
@@ -123,7 +132,7 @@ make dist
 
 GitHub CI 包含源码隐私检查、三个发行版、固定版本 Linux 7.2.9 内核和固定版本 Arch Linux 7.2.9-arch1-1 内核的编译、隔离 QEMU 内核测试，以及
 Debian 安装/卸载/恢复原驱动验证。通过后生成 `.deb`、源码归档和 SHA-256 校验。
-推送与 `VERSION` 一致的版本标签时，发布实验性 prerelease。
+推送与 `VERSION` 一致的版本标签时，先发布为 prerelease；实机验证后再手动改为正式版。
 
 公开仓库不包含开发环境原始日志、主机名、局域网地址、密钥或预编译模块。
 测试地址均使用文档专用网段。提交问题前仍请自行检查诊断内容，参见

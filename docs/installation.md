@@ -64,14 +64,26 @@ unless explicitly marked as a hardware test.
 
 ## Install a release package
 
-Check `SHA256SUMS` against the release files, then:
+In a **new, empty directory**, download the newest release's package and
+checksum file, verify, and install:
 
 ```sh
-sudo apt install ./thunderbolt-net-dkms_0.3.0-1_all.deb
+curl -fsSL https://api.github.com/repos/riverscn/thunderbolt-net-dkms/releases/latest \
+  | grep -oE '"browser_download_url": *"[^"]*(_all\.deb|/SHA256SUMS)"' | cut -d'"' -f4 \
+  | xargs -n1 curl -fLO
+sha256sum --check --ignore-missing SHA256SUMS && sudo apt install ./thunderbolt-net-dkms_*_all.deb
 dkms status -m thunderbolt-net
 modinfo -n thunderbolt_net
 modinfo -F version thunderbolt_net
 ```
+
+The API query returns the latest full release; prereleases are skipped. The
+checksum line must report `OK`; `apt` then installs the single `.deb` in the
+directory. To install a prerelease or a specific version, download its `.deb`
+and `SHA256SUMS` from the
+[Releases](https://github.com/riverscn/thunderbolt-net-dkms/releases) page
+into an empty directory and run the same two commands. The unauthenticated
+GitHub API allows 60 requests per hour per address.
 
 The kernel module retains the stock name `thunderbolt_net`. DKMS manages an
 override (normally in `updates/dkms`) and original-module restoration. Do not
