@@ -3,7 +3,7 @@
 Version 0.3.0 starts from the released v0.2.0 mainline, not the automatic-MTU
 experiment. Its reviewed baseline is Linux **v7.2.9**, commit
 `5fce161649b4d779d1b76d9fcd52dc77779774b8` in `gregkh/linux`. It is a separate
-experimental prerelease and does not change the published v0.2.0.
+release and does not change the published v0.2.0.
 
 ## What is tracked
 

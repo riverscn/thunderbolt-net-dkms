@@ -55,8 +55,9 @@ call had 11–44× more interrupts per GiB and about 20% lower download throughp
 No performance gain over 0.2.0 is claimed. Physical disconnect during traffic,
 suspend/resume and long stress remain open.
 
-The package remains experimental. Use an independent management path when
-reloading; [rollback](docs/installation.md#return-to-the-020-driver) is to 0.2.0.
+Version 0.3.0 is the first release published without the prerelease mark. The
+driver is still out of tree and its hardware validation covers one controller
+and peer combination. Use an independent management path when reloading; [rollback](docs/installation.md#return-to-the-020-driver) is to 0.2.0.
 The [0.2.0 report](docs/validation.md) covers the previous Linux v7.0 baseline.
 
 ## Install and enable
@@ -143,8 +144,9 @@ GitHub Actions checks source hygiene, builds on Ubuntu 24.04, Debian 13,
 Ubuntu 26.04, a pinned upstream Linux 7.2.9 kernel and the pinned Arch Linux
 `7.2.9-arch1-1` kernel, runs kernel tests, and verifies DKMS install/removal in
 isolated containers. Successful runs upload a `.deb`, an allowlisted source archive and
-SHA-256 checksums. A matching `v0.3.0` tag publishes an **experimental prerelease**
-only after all jobs pass. See [release procedure](docs/releasing.md).
+SHA-256 checksums. A matching `v*` tag publishes a **prerelease** only after all
+jobs pass; promotion to a full release is a manual step after hardware
+validation. See [release procedure](docs/releasing.md).
 
 No private hardware runner or local network access is needed. Third-party
 Actions are pinned to full commit hashes; pull requests receive read-only
