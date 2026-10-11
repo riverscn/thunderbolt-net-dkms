@@ -3,6 +3,7 @@
 """Run kernel tests inside a disposable, diskless QEMU with no external NIC."""
 import argparse
 import gzip
+import json
 import lzma
 import os
 import pathlib
@@ -14,7 +15,8 @@ import tempfile
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 def run(argv, **kwargs):
-    return subprocess.run(argv, check=True, timeout=120, **kwargs)
+    kwargs.setdefault('timeout', 120)
+    return subprocess.run(argv, check=True, **kwargs)
 
 
 def copy_module(path, fs):
@@ -52,7 +54,7 @@ $B mount -t sysfs sysfs /sys
 '''
 
 
-def boot(base, fs, init, image, log_name):
+def boot(base, fs, init, image, log_name, timeout=120):
     """Boot the guest with this init; return its kernel log after a clean exit."""
     (fs / 'init').write_text(init)
     (fs / 'init').chmod(0o755)
@@ -65,8 +67,8 @@ def boot(base, fs, init, image, log_name):
                '-m', '1024', '-smp', '1', '-nodefaults', '-no-user-config',
                '-display', 'none', '-monitor', 'none', '-serial', 'stdio',
                '-nic', 'none', '-no-reboot', '-kernel', str(image),
-               '-initrd', str(archive), '-append', 'console=ttyS0 rdinit=/init panic=-1 quiet']
-    result = run(command, capture_output=True, text=True)
+               '-initrd', str(archive), '-append', 'console=ttyS0 rdinit=/init panic=-1 log_buf_len=4M quiet']
+    result = run(command, capture_output=True, text=True, timeout=timeout)
     build = ROOT / 'build'
     build.mkdir(exist_ok=True)
     (build / log_name).write_text(result.stdout + result.stderr)
@@ -135,7 +137,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='tbnet-qemu-') as temporary:
         base = pathlib.Path(temporary)
         fs = base / 'root'
-        for part in ('bin','dev','proc','sys','tmp','lib/modules'):
+        for part in ('bin','dev','proc','sys','tmp','run','etc','lib/modules'):
             (fs / part).mkdir(parents=True, exist_ok=True)
 
         def copy_binary(path):
@@ -162,10 +164,12 @@ def main():
             return
         copy_binary('/usr/sbin/ip' if pathlib.Path('/usr/sbin/ip').exists() else '/usr/bin/ip')
         ip = '/usr/sbin/ip' if (fs / 'usr/sbin/ip').exists() else '/usr/bin/ip'
-        for name in ('thunderbolt_net', 'tbnet_rx_test', 'tbnet_path_test', 'tbnet_order_test'):
+        run(['cc', '-O2', '-Wall', '-Wextra', '-Werror', '-static',
+             str(ROOT / 'tests/tcp-session.c'), '-o', str(fs / 'tcp-session')])
+        for name in ('thunderbolt_net', 'tbnet_rx_test', 'tbnet_path_test', 'tbnet_order_test', 'tbnet_tcp_test'):
             shutil.copy2(ROOT / 'src' / (name + '.ko'), fs / (name + '.ko'))
         dependencies = []
-        for name in ('thunderbolt', 'bridge'):
+        for name in ('thunderbolt', 'bridge', 'veth'):
             result = run(['modprobe', '-S', kernel, '--show-depends', name], capture_output=True, text=True)
             for line in result.stdout.splitlines():
                 if not line.startswith('insmod '):
@@ -227,7 +231,74 @@ done
  $B rmmod tbnet_order_test
 done
 '''
-        text = boot(base, fs, init, image, 'qemu-' + kernel + '.log')
+        # Real TCP sessions through the metadata-loss link. The host routes
+        # the sender's namespace to the receiver's over a veth whose route is
+        # limited to 1280 while every interface stays at 9000, so the sender
+        # learns PMTU 1280 and keeps sending TSO aggregates of smaller
+        # segments. The advmss case lets the receiver's SYN-ACK carry the
+        # limit instead, so no ICMP is needed. Results go to the kernel log.
+        init += r'''$B rmmod tbnet_path_test
+for ipv in 4 6; do
+ for policy in preserve capped oversized learned learned_mss; do
+  mode=1
+  cap=1280
+  learn=0
+  advmss=
+  case "$policy" in
+   preserve) mode=0 ;;
+   oversized) cap=1500 ;;
+   learned) cap=1500; learn=1 ;;
+   learned_mss) cap=1500; learn=1; advmss=1240; test "$ipv" != 6 || advmss=1220 ;;
+  esac
+  $B insmod /tbnet_tcp_test.ko mode="$mode" cap="$cap" learn="$learn"
+  $IP netns add sender
+  $IP netns add receiver
+  $IP link set tbpeer0 netns sender
+  $IP link add out0 type veth peer name in0
+  $IP link set in0 netns receiver
+  $IP link set tbrx0 mtu 9000 up
+  $IP link set out0 mtu 9000 up
+  $IP -n sender link set lo up
+  $IP -n sender link set tbpeer0 mtu 9000 up
+  $IP -n receiver link set lo up
+  $IP -n receiver link set in0 mtu 9000 up
+  $IP addr add 192.0.2.1/24 dev tbrx0
+  $IP addr add 198.51.100.1/24 dev out0
+  $IP -n sender addr add 192.0.2.10/24 dev tbpeer0
+  $IP -n receiver addr add 198.51.100.20/24 dev in0
+  $IP -n sender route add default via 192.0.2.1
+  $IP -n receiver route add default via 198.51.100.1 ${advmss:+advmss $advmss}
+  $IP route add 198.51.100.20/32 dev out0 mtu 1280
+  $IP -6 addr add 2001:db8:1::1/64 dev tbrx0 nodad
+  $IP -6 addr add 2001:db8:2::1/64 dev out0 nodad
+  $IP -n sender -6 addr add 2001:db8:1::10/64 dev tbpeer0 nodad
+  $IP -n receiver -6 addr add 2001:db8:2::20/64 dev in0 nodad
+  $IP -n sender -6 route add default via 2001:db8:1::1
+  $IP -n receiver -6 route add default via 2001:db8:2::1 ${advmss:+advmss $advmss}
+  $IP -6 route add 2001:db8:2::20/128 dev out0 mtu 1280
+  echo 0 > /proc/sys/net/ipv4/conf/tbrx0/rp_filter
+  dest=198.51.100.20
+  test "$ipv" != 6 || dest=2001:db8:2::20
+  $IP netns exec receiver /tcp-session server "$dest" &
+  server_pid=$!
+  $B sleep 1
+  echo "TBNET_TCP_CASE ipv=$ipv policy=$policy cap=$cap learn=$learn route_mtu=1280" > /dev/kmsg
+  $IP netns exec sender /tcp-session client "$dest" > /dev/kmsg
+  metrics=
+  for metric in aggregates rebuilt failures min_mss rebuilt_gso plain_over_path max_plain_iplen bound_mss bound_icmp bound_hits; do
+   metrics="$metrics $metric=$($B cat /sys/module/tbnet_tcp_test/parameters/$metric)"
+  done
+  echo "TBNET_TCP_METRICS$metrics" > /dev/kmsg
+  kill "$server_pid" 2>/dev/null || true
+  wait "$server_pid" 2>/dev/null || true
+  $IP netns del sender
+  $IP netns del receiver
+  $IP link del out0 2>/dev/null || true
+  $B rmmod tbnet_tcp_test
+ done
+done
+'''
+        text = boot(base, fs, init, image, 'qemu-' + kernel + '.log', timeout=420)
         assert 'TBNET_TEST SUMMARY tests=27 failures=0' in text, text[-6000:]
         assert len(re.findall(r'TBNET_PATH PASS ', text)) == 16, text[-6000:]
         assert 'TBNET_PATH FAIL' not in text, text[-6000:]
@@ -243,7 +314,52 @@ done
         assert legacy[2:] == (0, 26, 0), legacy
         assert 'TBNET_ORDER ERROR' not in text, text[-6000:]
         print(f'GRO ordering: 256 corrected cases passed; legacy control reordered {legacy[1]}/256')
-        print('QEMU passed: 27 unit tests, 16 bridge/router cases, GRO ordering, driver load/unload')
+        sessions = tcp_sessions(text)
+        (ROOT / 'build' / ('tcp-' + kernel + '.json')).write_text(json.dumps(sessions, indent=2) + '\n')
+        print(f'QEMU passed: 27 unit tests, 16 bridge/router cases, {len(sessions)} TCP sessions, '
+              'GRO ordering, driver load/unload')
+
+
+def tcp_sessions(text):
+    """Check the TCP session results in the kernel log; return them as rows."""
+    pattern = (r'TBNET_TCP_CASE (?P<case>[^\n]*)\n[^\n]*TBNET_TCP (?P<result>[^\n]*)\n'
+               r'[^\n]*TBNET_TCP_METRICS (?P<metrics>[^\n]*)')
+    sessions = []
+    for match in re.finditer(pattern, text):
+        row = {}
+        for part in ('case', 'result', 'metrics'):
+            row.update(field.split('=', 1) for field in match.group(part).split())
+        row = {key: int(value) if value.isdigit() else value for key, value in row.items()}
+        print('TCP session:', row)
+        assert row['failures'] == 0 and row['aggregates'] > 0, row
+        if row['policy'] == 'preserve':
+            # A NIC that keeps segment boundaries: no normalization needed.
+            assert row['success'] == 1 and row['rebuilt'] == 0, row
+            assert row['pmtu'] == 1280 and row['min_mss'] < 1280, row
+            continue
+        assert row['rebuilt'] > 0 and row['rebuilt_gso'] > 0, row
+        if row['policy'] == 'capped':
+            # A cap at the path limit is correct without any learning.
+            assert row['success'] == 1 and row['plain_over_path'] == 0, row
+            assert row['bound_hits'] == 0, row
+        elif row['policy'] == 'oversized':
+            # A cap above the path limit is the stall under study; its
+            # outcome depends on kernel TCP recovery and is only recorded.
+            assert row['bound_hits'] == 0, row
+        elif row['policy'] == 'learned':
+            # The same oversized cap, corrected by the ICMP feedback that
+            # passes through the host toward the sender.
+            assert row['success'] == 1, row
+            assert row['bound_icmp'] > 0 and row['bound_hits'] > 0, row
+            assert row['plain_over_path'] == 0, row
+        elif row['policy'] == 'learned_mss':
+            # The receiver's SYN-ACK carries the limit: no ICMP occurs.
+            assert row['success'] == 1, row
+            assert row['bound_mss'] > 0 and row['bound_icmp'] == 0, row
+            assert row['bound_hits'] > 0 and row['plain_over_path'] == 0, row
+        sessions.append(row)
+    assert len(sessions) == 8, text[-8000:]
+    return sessions
 
 if __name__ == '__main__':
     main()
