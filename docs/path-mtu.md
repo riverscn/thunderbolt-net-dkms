@@ -108,6 +108,58 @@ link, while uploads to the host itself or to the LAN are fast, and
 `ethtool -S thunderbolt0` shows no errors. Check the peer's cached path MTU
 to that destination (`route -n get ADDRESS` on macOS) against the cap.
 
+## Learned bounds — experimental, 2026-10-11
+
+The sender's MSS is not in the aggregate, but the packets that constrain it
+leave this host toward the peer, where the driver's transmit path can read
+them:
+
+- The **SYN-ACK** a remote returns carries its MSS option. On the PPPoE
+  topology above the router clamps it (`mtu_fix`), so the SYN-ACK arriving at
+  the Thunderbolt port already says 1452, the exact path limit, while the
+  Mac's own SYN advertised 1460.
+- The **ICMP Fragmentation Needed / Packet Too Big** a router sends quotes the
+  peer's packet (addresses and ports) and the next-hop MTU. With the cap at
+  1500, 59 such messages for one 10-second upload passed through the port.
+
+`rx_segment_learn=1` (default on this branch) records both in a small table
+keyed by device, flow and destination, expiring after ten minutes like the
+kernel's own path MTU cache. A normalized aggregate whose flow or destination
+has a record is split at that bound instead of `rx_segment_mtu`, never above
+the interface MTU. Both sources can only make segments smaller than the sender
+itself would send, so a forged message costs efficiency, not correctness.
+Flows with no record keep the cap, which is why the cap still defaults to 1280.
+`ethtool -S` shows `rx_bound_learned_mss`, `rx_bound_learned_icmp` and
+`rx_bound_hits`.
+
+Isolated QEMU sessions on Linux 7.0.14 (all interfaces 9000, a 1280 route on
+the host, 1 MiB per session, [harness](../scripts/qemu-test.py)):
+
+| Policy | IPv4 retransmissions | IPv6 retransmissions |
+| --- | ---: | ---: |
+| Original GSO metadata preserved | 28 | 29 |
+| Cap 1280, no learning | 15 | 16 |
+| Cap 1500, no learning (the stall) | 137 | 293 |
+| Cap 1500, learned from ICMP | 27 | 28 |
+| Cap 1500, learned from a receiver `advmss` SYN-ACK | 0 | 1 |
+
+In the last row the sender's PMTU stayed at 9000: no packet was ever too big,
+because the bound was known before the first aggregate.
+
+On the PPPoE topology, with the module loaded as `rx_segment_mtu=1500
+rx_segment_learn=1` (the value that stalled at 0.1 Mbit/s without learning),
+four uploads reached 36.9, 6.2, 38.1 and 39.6 Mbit/s against the uplink's
+39.3 ceiling; 29,751 of 29,755 normalized aggregates used a learned bound,
+98 came from SYN-ACKs and 2 from ICMP. The 6.2 Mbit/s run had zero
+retransmissions and a tenth of the aggregates, the same uplink pause seen once
+in the cap-1280 phase. Rows `learn-cap1500` in [the CSV](path-mtu-results.csv).
+
+Limits: a connection established before the driver loaded has no SYN-ACK
+record and keeps the cap until an ICMP arrives; only ICMP that passes through
+this host is seen, which is every ICMP addressed to the peer for flows this
+host forwards; VLAN-tagged control packets are not parsed yet; the table holds
+2048 entries. This is a prototype on `experiment/rx-flow-bound`, not a release.
+
 ## Not yet done
 
 - The cost of 1280 on a jumbo or 10 Gbit/s LAN has not been measured; the
@@ -117,7 +169,5 @@ to that destination (`route -n get ADDRESS` on macOS) against the cap.
   between the two from being treated as aggregates and would also cover
   aggregates between the cap and the interface MTU, which today pass through
   unmarked. This changes validated receive behavior and needs its own tests.
-- Learning each flow's bound from the forwarded SYN/SYN-ACK MSS options and
-  from forwarded ICMP Packet Too Big messages is the only automatic approach
-  that tracks a remote limit. It amounts to per-flow state in the driver and
-  has not been attempted.
+- Learned bounds need review of the table's locking and memory under many
+  flows, VLAN handling, and a longer hardware run before any release.
