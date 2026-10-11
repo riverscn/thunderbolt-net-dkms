@@ -142,6 +142,44 @@ it before sharing; keep the `raw/` iperf3 JSON private. Mac-side details
 (macOS version, `sysctl net.inet.tcp.tso`, link speed) must be added by hand.
 Reconnection and physical disconnect checks remain manual.
 
+### Forwarding to a remote endpoint
+
+The `forward` subcommand measures the path that the fallback and learned path
+MTU exist for: uploads from the Mac, through this host, to an iperf3 server
+beyond it (a VPS, or any machine behind a narrower link such as PPPoE). The
+client runs on the Mac through a command prefix, usually SSH, so enable Remote
+Login on the Mac and install a key for the host's root user first; the server
+runs on the remote machine (`iperf3 -s -D`). Counters still come from the
+host's Thunderbolt interface, and `transport_verified` confirms the uploads
+really crossed it:
+
+```sh
+MAC=user@198.51.100.2      # SSH login on the Mac; iperf3 must be installed there
+TARGET=203.0.113.9         # iperf3 server beyond this host
+sudo python3 scripts/hw-test.py forward --phase cap1280 --client "ssh $MAC" --target "$TARGET"
+sudo python3 scripts/hw-test.py reload --peer 198.51.100.2 \
+  --param rx_segment=1 --param rx_segment_mtu=1500 --param rx_page_pool=1 --param rx_segment_learn=0
+sudo python3 scripts/hw-test.py forward --phase cap1500-fixed --client "ssh $MAC" --target "$TARGET"
+sudo python3 scripts/hw-test.py reload --peer 198.51.100.2 \
+  --param rx_segment=1 --param rx_segment_mtu=1500 --param rx_page_pool=1 --param rx_segment_learn=1
+sudo python3 scripts/hw-test.py forward --phase cap1500-learn --client "ssh $MAC" --target "$TARGET"
+sudo python3 scripts/hw-test.py reload --peer 198.51.100.2 \
+  --param rx_segment=1 --param rx_segment_mtu=1280 --param rx_page_pool=1
+sudo python3 scripts/hw-test.py summary
+```
+
+Each `forward` run records four 10-second uploads (`--repeat`, `--time`) with
+the rate the remote server received, retransmissions, normalized aggregates
+and the `rx_bound_*` deltas. The summary lists forwarded phases in their own
+table in Mbit/s; their rate is the remote path's ceiling, not the Thunderbolt
+link's, so compare phases against each other and against a direct upload from
+the host (`iperf3 -c "$TARGET"` on the host, no Thunderbolt hop). A fallback
+above the path limit with learning off shows up as a rate near zero with few
+normalized aggregates; with learning on, `rx_bound_hits` should approach the
+normalized count. [Path MTU](path-mtu.md) records a run of this procedure.
+Record the Mac's cached path MTU to the target by hand
+(`route -n get TARGET` on the Mac), since the helper does not read it.
+
 ### Reporting results
 
 Share these as text, in an issue, pull request or review discussion:

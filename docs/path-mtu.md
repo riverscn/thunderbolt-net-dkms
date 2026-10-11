@@ -59,7 +59,9 @@ single-vCPU VPS. This is an ordinary home-network path; nothing was configured
 to provoke the failure. The host's default route does not use the Thunderbolt
 interface, so reloading the module only interrupted the Mac's connection.
 
-Each phase ran four single-stream uploads from the Mac (`iperf3 -t 10 -O 1`).
+Each phase ran four single-stream uploads from the Mac (`iperf3 -t 10 -O 1`);
+`scripts/hw-test.py forward` now automates this procedure
+([testing](testing.md#forwarding-to-a-remote-endpoint)).
 The cap was changed by reloading the driver (`rmmod`, then `modprobe` with
 explicit `rx_segment=1 rx_segment_mtu=N rx_page_pool=1`), and the first value
 was repeated last to bracket the result. The host itself, uploading to the same
