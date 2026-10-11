@@ -109,12 +109,23 @@ workaround) and RX page recycling ([design](rx-page-pool.md)) for the next
 module load. The file belongs to the package: upgrades replace it and removing
 the package deletes it, so no options remain once the package is gone.
 
-`rx_segment_mtu` is the IP length of the segments rebuilt from the peer's TCP
-aggregates. It must not exceed the smallest MTU on any path those flows take
-beyond this host; a larger value stalls the peer's uploads through the host
-(0.3.0 shipped 1500, which did so behind a PPPoE uplink). The default 1280 is
-the IPv6 minimum and safe on any path. Raise it only when every egress path is
+`rx_segment_mtu` is the fallback path MTU: the IP length of the segments
+rebuilt from the peer's TCP aggregates when nothing has been learned for the
+flow. It must not exceed the smallest MTU on any path those flows take beyond
+this host; a larger value stalls the peer's uploads through the host (0.3.0
+shipped 1500, which did so behind a PPPoE uplink). The default 1280 is the
+IPv6 minimum and safe on any path. Raise it only when every egress path is
 known to carry larger packets; see [path MTU](path-mtu.md).
+
+`rx_segment_learn` is not in the file because its built-in default is on: the
+driver reads the SYN/SYN-ACK MSS option and the ICMP Fragmentation Needed /
+Packet Too Big messages that leave the host toward the peer, and splits each
+flow's aggregates at that learned path MTU instead of the fallback, never above
+the interface MTU. It is experimental (0.4.0). To turn it off, append
+`rx_segment_learn=0` to the options line in your `/etc/modprobe.d/` copy, as
+described below. `ethtool -S` shows `rx_bound_learned_mss`,
+`rx_bound_learned_icmp` and `rx_bound_hits`; see
+[learned bounds](path-mtu.md#learned-bounds--experimental-2026-10-11).
 
 While the package is installed, the options apply to whichever `thunderbolt_net`
 loads. If DKMS has not built this module for the running kernel (a kernel
@@ -208,7 +219,8 @@ sudoedit /etc/modprobe.d/thunderbolt-net.conf
 
 For example, `options thunderbolt_net rx_segment=1 rx_segment_mtu=1280 rx_page_pool=0`
 keeps the workaround and disables page recycling; `rx_segment=0` disables
-normalization. The NAPI allocator/lifecycle changes remain active with the pool
+normalization; appending `rx_segment_learn=0` keeps the fixed fallback path MTU
+for every flow. The NAPI allocator/lifecycle changes remain active with the pool
 disabled. Do not use a differently named file to override a value: modprobe
 reads files in name order and the kernel keeps the last value, so a name that
 sorts before `thunderbolt-net.conf` (such as `thunderbolt-net-local.conf`) has

@@ -118,7 +118,7 @@ def installed_check(kernel, image, base, fs):
     print('QEMU passed: installed module loaded with package defaults ' + ' '.join(options))
 
 
-BOOL_PARAMS = ('rx_segment', 'rx_page_pool', 'e2e')
+BOOL_PARAMS = ('rx_segment', 'rx_segment_learn', 'rx_page_pool', 'e2e')
 
 def main():
     ap = argparse.ArgumentParser()
