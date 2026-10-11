@@ -59,10 +59,12 @@ src/rx_fixup.c
 src/rx_fixup.h
 src/tests/rx_fixup_order.c
 src/tests/rx_fixup_path.c
+src/tests/rx_fixup_tcp.c
 src/tests/rx_fixup_under_test.c
 src/tests/test_order.c
 src/tests/test_path.c
 src/tests/test_rx.c
+src/tests/test_tcp_link.c
 src/trace.c
 src/trace.h
 tests/kernels/arch.json
@@ -78,6 +80,7 @@ tests/rx-lifecycle/kcsan.config
 tests/rx-lifecycle/run.py
 tests/rx-lifecycle/sanity.c
 tests/rx-lifecycle/tested-functions.json
+tests/tcp-session.c
 tests/test_hwtest.py
 tests/test_release.py
 tests/test_upstream.py

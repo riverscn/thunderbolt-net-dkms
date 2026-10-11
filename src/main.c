@@ -240,13 +240,21 @@ static bool tbnet_rx_segment;
 module_param_named(rx_segment, tbnet_rx_segment, bool, 0444);
 MODULE_PARM_DESC(rx_segment, "Experimental verified RX TCP GSO metadata (default: false)");
 
-/* IP length of the segments rebuilt from an oversized aggregate. The sender's
- * MSS is not available, so this must not exceed the smallest path MTU the
- * forwarded flows traverse; 1280 is the IPv6 minimum.
+/* Fallback path MTU: the IP length of the segments rebuilt from an oversized
+ * aggregate when nothing has been learned for its flow. The sender's MSS is
+ * not available, so this must not exceed the smallest path MTU the forwarded
+ * flows traverse; 1280 is the IPv6 minimum.
  */
 static unsigned int tbnet_rx_segment_mtu = 1280;
 module_param_named(rx_segment_mtu, tbnet_rx_segment_mtu, uint, 0444);
-MODULE_PARM_DESC(rx_segment_mtu, "RX segmentation IP size cap, at most the smallest path MTU (68..65522, default: 1280)");
+MODULE_PARM_DESC(rx_segment_mtu, "Fallback path MTU for rebuilding a peer's TCP segments when no bound is learned for the flow (68..65522, default: 1280)");
+
+/* Experimental: bound each flow from the SYN-ACK MSS and ICMP feedback that
+ * leave toward the peer; the cap then only covers flows with no such record.
+ */
+static bool tbnet_rx_segment_learn = true;
+module_param_named(rx_segment_learn, tbnet_rx_segment_learn, bool, 0444);
+MODULE_PARM_DESC(rx_segment_learn, "Learn each flow's path MTU from forwarded SYN/SYN-ACK MSS and ICMP; overrides rx_segment_mtu (default: true)");
 
 static bool tbnet_e2e = true;
 module_param_named(e2e, tbnet_e2e, bool, 0444);
@@ -1311,6 +1319,9 @@ static netdev_tx_t tbnet_start_xmit(struct sk_buff *skb,
 
 	trace_tbnet_tx_skb(skb);
 
+	if (tbnet_rx_segment && tbnet_rx_segment_learn)
+		tbnet_bound_observe_tx(dev, skb);
+
 	nframes = DIV_ROUND_UP(data_len, TBNET_MAX_PAYLOAD_SIZE);
 	if (tbnet_available_buffers(&net->tx_ring) < nframes) {
 		netif_stop_queue(net->dev);
@@ -1507,6 +1518,9 @@ static const char tbnet_stat_names[][ETH_GSTRING_LEN] = {
 	"rx_normalized_bytes",
 	"rx_bad_checksum",
 	"rx_invalid_packets",
+	"rx_bound_learned_mss",
+	"rx_bound_learned_icmp",
+	"rx_bound_hits",
 };
 
 static int tbnet_get_sset_count(struct net_device *dev, int sset)
@@ -1524,11 +1538,16 @@ static void tbnet_get_ethtool_stats(struct net_device *dev,
 				  struct ethtool_stats *stats, u64 *data)
 {
 	const struct tbnet *net = netdev_priv(dev);
+	struct tbnet_bound_stats bound;
 
+	tbnet_bound_get_stats(dev, &bound);
 	data[0] = READ_ONCE(net->stats.rx_normalized_packets);
 	data[1] = READ_ONCE(net->stats.rx_normalized_bytes);
 	data[2] = READ_ONCE(net->stats.rx_bad_checksum);
 	data[3] = READ_ONCE(net->stats.rx_invalid_packets);
+	data[4] = bound.learned_mss;
+	data[5] = bound.learned_icmp;
+	data[6] = bound.hits;
 }
 
 static const struct ethtool_ops tbnet_ethtool_ops = {
@@ -1631,6 +1650,10 @@ static int tbnet_probe(struct tb_service *svc, const struct tb_service_id *id)
 		free_netdev(dev);
 		return ret;
 	}
+	/* Without a table the cap applies to every flow; not a failure. */
+	if (tbnet_rx_segment && tbnet_rx_segment_learn &&
+	    tbnet_bound_register(dev))
+		netdev_warn(dev, "RX segment bound learning unavailable\n");
 
 	return 0;
 }
@@ -1639,6 +1662,7 @@ static void tbnet_remove(struct tb_service *svc)
 {
 	struct tbnet *net = tb_service_get_drvdata(svc);
 
+	tbnet_bound_unregister(net->dev);
 	unregister_netdev(net->dev);
 	tb_unregister_protocol_handler(&net->handler);
 	free_netdev(net->dev);

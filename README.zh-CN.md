@@ -25,6 +25,16 @@ MTU、DHCP、路由和其他卸载功能仍需分别排查。
 本项目是独立维护的实验，不代表 Linux、Apple、Intel 或任何发行版的官方修复。
 它不处理所有雷电枚举、热插拔、休眠、DHCP 或 TSO 问题。
 
+## 0.4.0 版本
+
+本版本加入一个实验性机制，让下面那个兜底值不再那么关键：`rx_segment_learn=1`（默认）
+读取从宿主机发往 Mac 的 SYN-ACK 中的 MSS 选项和 ICMP Fragmentation Needed /
+Packet Too Big 报文，按流学习路径 MTU，于是即使 `rx_segment_mtu` 设错，宿主机也按
+真实路径切分聚合包；路径允许时也会切得更大，上限是接口 MTU。在 PPPoE 拓扑上，故意
+设成 1500 的兜底值配合学习仍然跑满了上行链路，本地雷电链路吞吐与 0.3.0 持平。
+没有记录的流沿用兜底值。详见[学习上界](docs/path-mtu.md#learned-bounds--experimental-2026-10-11)；
+`rx_segment_learn=0` 可关闭。
+
 ## 0.3.1 版本
 
 本版本只改一个打包默认值：`rx_segment_mtu` 从 1500 改为 **1280**。它是宿主机
@@ -32,8 +42,7 @@ MTU、DHCP、路由和其他卸载功能仍需分别排查。
 最小 MTU。设为 1500 时，Mac 经宿主机、再经 PPPoE（MTU 1492）上行到公网的上传
 只有 0.1 Mbit/s；设为 1280 后达到上行链路 39 Mbit/s 的上限。测量过程和何时
 应该调高（例如全程 jumbo 的局域网）见[路径 MTU](docs/path-mtu.md)。你自己创建的
-`/etc/modprobe.d/thunderbolt-net.conf` 会保留原值，升级后请检查。除内置默认值外
-驱动代码没有变化。
+`/etc/modprobe.d/thunderbolt-net.conf` 会保留原值，升级后请检查。
 
 ## 0.3.0 版本
 

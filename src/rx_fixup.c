@@ -5,9 +5,13 @@
  * never reinterpret unchecked wire data as CHECKSUM_PARTIAL/GSO.
  */
 #include <linux/etherdevice.h>
+#include <linux/hashtable.h>
+#include <linux/icmp.h>
+#include <linux/icmpv6.h>
 #include <linux/if_vlan.h>
 #include <linux/ip.h>
 #include <linux/ipv6.h>
+#include <linux/jhash.h>
 #include <linux/tcp.h>
 #include <net/gso.h>
 #include <net/ip.h>
@@ -15,6 +19,425 @@
 #include <net/tcp.h>
 
 #include "rx_fixup.h"
+
+/* Learned bounds: one global table keyed by device and flow. Entries expire
+ * like the kernel's own path MTU cache, so a path that widens again recovers
+ * after the same ten minutes.
+ */
+#define TBNET_BOUND_BITS	8
+#define TBNET_BOUND_MAX		2048
+#define TBNET_BOUND_TTL		(10 * 60 * HZ)
+
+struct tbnet_bound_key {
+	struct net_device *dev;
+	struct in6_addr src;	/* IPv4 addresses occupy the first four bytes */
+	struct in6_addr dst;
+	__be16 sport;		/* zero in a destination-only entry */
+	__be16 dport;
+	u8 family;
+	u8 pad[3];
+};
+
+struct tbnet_bound_entry {
+	struct hlist_node node;
+	struct tbnet_bound_key key;
+	unsigned int bound;	/* largest IP length the path is known to carry */
+	unsigned long stamp;
+};
+
+struct tbnet_bound_dev {
+	struct list_head node;
+	struct net_device *dev;
+	struct tbnet_bound_stats stats;
+};
+
+static DEFINE_SPINLOCK(tbnet_bound_lock);
+static DEFINE_HASHTABLE(tbnet_bound_table, TBNET_BOUND_BITS);
+static unsigned int tbnet_bound_count;
+static LIST_HEAD(tbnet_bound_devs);
+/* Smallest bound stored since the table was last empty: a packet no larger
+ * than this cannot need a learned split, so the receive path skips the lookup.
+ * Only a hint; a value below the true minimum costs parsing, not correctness.
+ */
+static unsigned int tbnet_bound_floor;
+
+static struct tbnet_bound_dev *tbnet_bound_dev_find(const struct net_device *dev)
+{
+	struct tbnet_bound_dev *bd;
+
+	list_for_each_entry(bd, &tbnet_bound_devs, node)
+		if (bd->dev == dev)
+			return bd;
+	return NULL;
+}
+
+int tbnet_bound_register(struct net_device *dev)
+{
+	struct tbnet_bound_dev *bd = kzalloc(sizeof(*bd), GFP_KERNEL);
+
+	if (!bd)
+		return -ENOMEM;
+	bd->dev = dev;
+	spin_lock_bh(&tbnet_bound_lock);
+	list_add(&bd->node, &tbnet_bound_devs);
+	spin_unlock_bh(&tbnet_bound_lock);
+	return 0;
+}
+
+void tbnet_bound_unregister(struct net_device *dev)
+{
+	struct tbnet_bound_entry *entry;
+	struct tbnet_bound_dev *bd;
+	struct hlist_node *tmp;
+	unsigned int bucket;
+
+	spin_lock_bh(&tbnet_bound_lock);
+	hash_for_each_safe(tbnet_bound_table, bucket, tmp, entry, node) {
+		if (entry->key.dev == dev) {
+			hash_del(&entry->node);
+			tbnet_bound_count--;
+			kfree(entry);
+		}
+	}
+	bd = tbnet_bound_dev_find(dev);
+	if (bd)
+		list_del(&bd->node);
+	if (!tbnet_bound_count)
+		WRITE_ONCE(tbnet_bound_floor, 0);
+	spin_unlock_bh(&tbnet_bound_lock);
+	kfree(bd);
+}
+
+void tbnet_bound_get_stats(struct net_device *dev, struct tbnet_bound_stats *out)
+{
+	struct tbnet_bound_dev *bd;
+
+	memset(out, 0, sizeof(*out));
+	spin_lock_bh(&tbnet_bound_lock);
+	bd = tbnet_bound_dev_find(dev);
+	if (bd)
+		*out = bd->stats;
+	spin_unlock_bh(&tbnet_bound_lock);
+}
+
+static u32 tbnet_bound_hash(const struct tbnet_bound_key *key)
+{
+	return jhash(key, sizeof(*key), 0);
+}
+
+static bool tbnet_bound_stale(const struct tbnet_bound_entry *entry)
+{
+	return time_after(jiffies, entry->stamp + TBNET_BOUND_TTL);
+}
+
+/* Caller holds the lock. Returns a fresh matching entry or NULL. */
+static struct tbnet_bound_entry *
+tbnet_bound_find(const struct tbnet_bound_key *key, u32 hash)
+{
+	struct tbnet_bound_entry *entry;
+	struct hlist_node *tmp;
+
+	hash_for_each_possible_safe(tbnet_bound_table, entry, tmp, node, hash) {
+		if (memcmp(&entry->key, key, sizeof(*key)))
+			continue;
+		if (tbnet_bound_stale(entry)) {
+			hash_del(&entry->node);
+			tbnet_bound_count--;
+			kfree(entry);
+			return NULL;
+		}
+		return entry;
+	}
+	return NULL;
+}
+
+/* Caller holds the lock. Drops stale entries in the bucket; if the table is
+ * still full, the bucket's oldest entry makes room, else nothing is stored.
+ */
+static bool tbnet_bound_make_room(u32 hash)
+{
+	struct tbnet_bound_entry *entry, *oldest = NULL;
+	struct hlist_node *tmp;
+
+	hash_for_each_possible_safe(tbnet_bound_table, entry, tmp, node, hash) {
+		if (tbnet_bound_stale(entry)) {
+			hash_del(&entry->node);
+			tbnet_bound_count--;
+			kfree(entry);
+		} else if (!oldest || time_before(entry->stamp, oldest->stamp)) {
+			oldest = entry;
+		}
+	}
+	if (tbnet_bound_count < TBNET_BOUND_MAX)
+		return true;
+	if (!oldest)
+		return false;
+	hash_del(&oldest->node);
+	tbnet_bound_count--;
+	kfree(oldest);
+	return true;
+}
+
+static void tbnet_bound_store(const struct tbnet_bound_key *key,
+			      unsigned int bound, bool lower_only, bool icmp)
+{
+	struct tbnet_bound_entry *entry;
+	struct tbnet_bound_dev *bd;
+	u32 hash = tbnet_bound_hash(key);
+
+	spin_lock_bh(&tbnet_bound_lock);
+	bd = tbnet_bound_dev_find(key->dev);
+	if (!bd)
+		goto out;
+	entry = tbnet_bound_find(key, hash);
+	if (entry) {
+		if (lower_only && bound >= entry->bound) {
+			entry->stamp = jiffies;
+			goto out;
+		}
+	} else {
+		if (!tbnet_bound_make_room(hash))
+			goto out;
+		entry = kzalloc(sizeof(*entry), GFP_ATOMIC);
+		if (!entry)
+			goto out;
+		entry->key = *key;
+		hash_add(tbnet_bound_table, &entry->node, hash);
+		tbnet_bound_count++;
+	}
+	if (!tbnet_bound_floor || bound < tbnet_bound_floor)
+		WRITE_ONCE(tbnet_bound_floor, bound);
+	entry->bound = bound;
+	entry->stamp = jiffies;
+	if (icmp)
+		bd->stats.learned_icmp++;
+	else
+		bd->stats.learned_mss++;
+out:
+	spin_unlock_bh(&tbnet_bound_lock);
+}
+
+static void tbnet_bound_key_init(struct tbnet_bound_key *key,
+				 struct net_device *dev, bool ipv4,
+				 const void *src, const void *dst,
+				 __be16 sport, __be16 dport)
+{
+	memset(key, 0, sizeof(*key));
+	key->dev = dev;
+	key->family = ipv4 ? 4 : 6;
+	memcpy(&key->src, src, ipv4 ? 4 : 16);
+	memcpy(&key->dst, dst, ipv4 ? 4 : 16);
+	key->sport = sport;
+	key->dport = dport;
+}
+
+/* Largest IP length the forwarding path toward (dst, dport) from (src, sport)
+ * is known to carry, or 0. Addresses and ports are those of the peer's packet.
+ */
+static unsigned int tbnet_bound_lookup(struct net_device *dev, bool ipv4,
+				       const void *src, const void *dst,
+				       __be16 sport, __be16 dport)
+{
+	struct tbnet_bound_entry *entry;
+	struct tbnet_bound_key key;
+	unsigned int bound = 0;
+
+	spin_lock_bh(&tbnet_bound_lock);
+	if (list_empty(&tbnet_bound_devs))
+		goto out;
+	tbnet_bound_key_init(&key, dev, ipv4, src, dst, sport, dport);
+	entry = tbnet_bound_find(&key, tbnet_bound_hash(&key));
+	if (entry)
+		bound = entry->bound;
+	key.sport = 0;
+	key.dport = 0;
+	entry = tbnet_bound_find(&key, tbnet_bound_hash(&key));
+	if (entry && (!bound || entry->bound < bound))
+		bound = entry->bound;
+	if (bound) {
+		struct tbnet_bound_dev *bd = tbnet_bound_dev_find(dev);
+
+		if (bd)
+			bd->stats.hits++;
+	}
+out:
+	spin_unlock_bh(&tbnet_bound_lock);
+	return bound;
+}
+
+/* The MSS option of a SYN/SYN-ACK, or 0. */
+static unsigned int tbnet_tcp_mss_option(const struct sk_buff *skb,
+					 unsigned int thoff, unsigned int thlen)
+{
+	u8 buffer[MAX_TCP_OPTION_SPACE];
+	const u8 *p;
+	unsigned int left;
+
+	if (thlen <= sizeof(struct tcphdr) || thlen > sizeof(struct tcphdr) + sizeof(buffer))
+		return 0;
+	left = thlen - sizeof(struct tcphdr);
+	p = skb_header_pointer(skb, thoff + sizeof(struct tcphdr), left, buffer);
+	if (!p)
+		return 0;
+	while (left) {
+		unsigned int kind = p[0], len;
+
+		if (kind == TCPOPT_EOL)
+			return 0;
+		if (kind == TCPOPT_NOP) {
+			p++;
+			left--;
+			continue;
+		}
+		if (left < 2 || p[1] < 2 || p[1] > left)
+			return 0;
+		len = p[1];
+		if (kind == TCPOPT_MSS && len == TCPOLEN_MSS)
+			return (p[2] << 8) | p[3];
+		p += len;
+		left -= len;
+	}
+	return 0;
+}
+
+/* A SYN-ACK leaving toward the peer carries the remote's MSS, which bounds
+ * the peer's segments: payload plus the base headers (RFC 6691).
+ */
+static void tbnet_bound_observe_synack(struct net_device *dev,
+				       const struct sk_buff *skb, bool ipv4,
+				       const void *remote, const void *peer,
+				       unsigned int thoff, unsigned int iphlen)
+{
+	struct tbnet_bound_key key;
+	struct tcphdr _th;
+	const struct tcphdr *th;
+	unsigned int mss;
+
+	/* A plain SYN toward the peer (a remote opening the connection) carries
+	 * the remote's MSS just the same.
+	 */
+	th = skb_header_pointer(skb, thoff, sizeof(_th), &_th);
+	if (!th || !th->syn || th->rst)
+		return;
+	mss = tbnet_tcp_mss_option(skb, thoff, th->doff * 4);
+	if (!mss)
+		return;
+	tbnet_bound_key_init(&key, dev, ipv4, peer, remote, th->dest, th->source);
+	tbnet_bound_store(&key, mss + iphlen + sizeof(*th), false, false);
+}
+
+/* ICMP feedback leaving toward the peer quotes the peer's own packet: its
+ * addresses, ports when TCP, and the next hop's MTU. Record the flow and the
+ * destination, so later flows start from the known limit.
+ */
+static void tbnet_bound_observe_icmp(struct net_device *dev, bool ipv4,
+				     const void *src, const void *dst,
+				     const __be16 *ports, unsigned int mtu)
+{
+	struct tbnet_bound_key key;
+
+	if (mtu < (ipv4 ? 68 : IPV6_MIN_MTU) || mtu > 65535)
+		return;
+	if (ports) {
+		tbnet_bound_key_init(&key, dev, ipv4, src, dst, ports[0], ports[1]);
+		tbnet_bound_store(&key, mtu, true, true);
+	}
+	tbnet_bound_key_init(&key, dev, ipv4, src, dst, 0, 0);
+	tbnet_bound_store(&key, mtu, true, true);
+}
+
+void tbnet_bound_observe_tx(struct net_device *dev, struct sk_buff *skb)
+{
+	unsigned int nhoff = ETH_HLEN;
+	struct ethhdr _eth;
+	const struct ethhdr *eth;
+	__be16 proto;
+
+	if (skb_is_gso(skb) || list_empty(&tbnet_bound_devs))
+		return;
+	eth = skb_header_pointer(skb, 0, sizeof(_eth), &_eth);
+	if (!eth)
+		return;
+	proto = eth->h_proto;
+	/* The device offers no VLAN offload, so tags are in-band, as on receive. */
+	while (eth_type_vlan(proto)) {
+		struct vlan_hdr _vh;
+		const struct vlan_hdr *vh;
+
+		if (nhoff >= ETH_HLEN + 2 * VLAN_HLEN)
+			return;
+		vh = skb_header_pointer(skb, nhoff, sizeof(_vh), &_vh);
+		if (!vh)
+			return;
+		proto = vh->h_vlan_encapsulated_proto;
+		nhoff += VLAN_HLEN;
+	}
+	if (proto == htons(ETH_P_IP)) {
+		struct iphdr _iph;
+		const struct iphdr *iph;
+		unsigned int iphlen;
+
+		iph = skb_header_pointer(skb, nhoff, sizeof(_iph), &_iph);
+		if (!iph || iph->version != 4 || iph->ihl < 5 || ip_is_fragment(iph))
+			return;
+		iphlen = iph->ihl * 4;
+		if (iph->protocol == IPPROTO_TCP) {
+			tbnet_bound_observe_synack(dev, skb, true, &iph->saddr,
+						   &iph->daddr, nhoff + iphlen,
+						   sizeof(*iph));
+		} else if (iph->protocol == IPPROTO_ICMP) {
+			struct {
+				struct icmphdr icmp;
+				struct iphdr inner;
+				__be16 ports[2];
+			} _m;
+			const typeof(_m) *m;
+			const __be16 *ports = NULL;
+
+			m = skb_header_pointer(skb, nhoff + iphlen, sizeof(_m), &_m);
+			if (!m || m->icmp.type != ICMP_DEST_UNREACH ||
+			    m->icmp.code != ICMP_FRAG_NEEDED ||
+			    m->inner.version != 4 || m->inner.ihl != 5)
+				return;
+			if (m->inner.protocol == IPPROTO_TCP && !ip_is_fragment(&m->inner))
+				ports = m->ports;
+			tbnet_bound_observe_icmp(dev, true, &m->inner.saddr,
+						 &m->inner.daddr, ports,
+						 ntohs(m->icmp.un.frag.mtu));
+		}
+	} else if (proto == htons(ETH_P_IPV6)) {
+		struct ipv6hdr _ip6h;
+		const struct ipv6hdr *ip6h;
+
+		ip6h = skb_header_pointer(skb, nhoff, sizeof(_ip6h), &_ip6h);
+		if (!ip6h || ip6h->version != 6)
+			return;
+		if (ip6h->nexthdr == IPPROTO_TCP) {
+			tbnet_bound_observe_synack(dev, skb, false, &ip6h->saddr,
+						   &ip6h->daddr,
+						   nhoff + sizeof(*ip6h),
+						   sizeof(*ip6h));
+		} else if (ip6h->nexthdr == IPPROTO_ICMPV6) {
+			struct {
+				struct icmp6hdr icmp;
+				struct ipv6hdr inner;
+				__be16 ports[2];
+			} _m;
+			const typeof(_m) *m;
+			const __be16 *ports = NULL;
+
+			m = skb_header_pointer(skb, nhoff + sizeof(*ip6h), sizeof(_m), &_m);
+			if (!m || m->icmp.icmp6_type != ICMPV6_PKT_TOOBIG ||
+			    m->inner.version != 6)
+				return;
+			if (m->inner.nexthdr == IPPROTO_TCP)
+				ports = m->ports;
+			tbnet_bound_observe_icmp(dev, false, &m->inner.saddr,
+						 &m->inner.daddr, ports,
+						 ntohl(m->icmp.icmp6_mtu));
+		}
+	}
+}
 
 /* Authentication and transport extensions may depend on original segment
  * boundaries. Support only ordinary timestamps/SACK/padding in this PoC.
@@ -46,16 +469,16 @@ static bool tbnet_tcp_options_supported(const struct tcphdr *th)
 	return true;
 }
 
-struct sk_buff *tbnet_rx_fixup(struct sk_buff *skb, unsigned int mtu)
+struct sk_buff *tbnet_rx_fixup(struct sk_buff *skb, unsigned int path_mtu)
 {
-	unsigned int nhoff = ETH_HLEN, iphlen, iplen, tcplen, thlen, mss;
+	unsigned int nhoff = ETH_HLEN, iphlen, iplen, tcplen, thlen, mss, threshold;
 	struct tcphdr *th;
 	unsigned int gso_type;
 	__be16 proto;
 	__sum16 check;
 	int err = -EINVAL;
 
-	if (mtu < 68 || mtu > 65522 || skb_is_gso(skb) ||
+	if (path_mtu < 68 || path_mtu > 65522 || skb_is_gso(skb) ||
 	    skb->ip_summed != CHECKSUM_NONE || skb->encapsulation ||
 	    skb_has_frag_list(skb))
 		return skb;
@@ -74,7 +497,17 @@ struct sk_buff *tbnet_rx_fixup(struct sk_buff *skb, unsigned int mtu)
 		proto = vh->h_vlan_encapsulated_proto;
 		nhoff += VLAN_HLEN;
 	}
-	if (skb->len - nhoff <= mtu)
+	/* Packets within the cap may still exceed a learned bound; parse them
+	 * only when some bound below the cap exists.
+	 */
+	threshold = path_mtu;
+	if (skb->dev) {
+		unsigned int floor = READ_ONCE(tbnet_bound_floor);
+
+		if (floor && floor < threshold)
+			threshold = floor;
+	}
+	if (skb->len - nhoff <= threshold)
 		return skb;
 
 	if (proto == htons(ETH_P_IP)) {
@@ -112,7 +545,7 @@ struct sk_buff *tbnet_rx_fixup(struct sk_buff *skb, unsigned int mtu)
 	}
 	if (iplen < iphlen + sizeof(*th) || iplen > skb->len - nhoff)
 		goto drop;
-	if (iplen <= mtu)
+	if (iplen <= threshold)
 		return skb;
 	if (!pskb_may_pull(skb, nhoff + iphlen + sizeof(*th)))
 		goto drop;
@@ -129,9 +562,31 @@ struct sk_buff *tbnet_rx_fixup(struct sk_buff *skb, unsigned int mtu)
 	 */
 	if (!th->ack || th->syn || th->rst || th->urg ||
 	    (((const u8 *)th)[12] & 0x0f) ||
-	    !tbnet_tcp_options_supported(th) || mtu <= iphlen + thlen)
+	    !tbnet_tcp_options_supported(th) || path_mtu <= iphlen + thlen)
 		return skb;
-	mss = mtu - iphlen - thlen;
+	/* A bound learned from this flow's control packets is more specific
+	 * than the configured cap in either direction, within the device MTU.
+	 */
+	if (skb->dev) {
+		const void *ipp = skb->data + nhoff;
+		unsigned int bound;
+
+		if (gso_type == SKB_GSO_TCPV4)
+			bound = tbnet_bound_lookup(skb->dev, true,
+						   &((const struct iphdr *)ipp)->saddr,
+						   &((const struct iphdr *)ipp)->daddr,
+						   th->source, th->dest);
+		else
+			bound = tbnet_bound_lookup(skb->dev, false,
+						   &((const struct ipv6hdr *)ipp)->saddr,
+						   &((const struct ipv6hdr *)ipp)->daddr,
+						   th->source, th->dest);
+		if (bound)
+			path_mtu = min(bound, READ_ONCE(skb->dev->mtu));
+	}
+	if (iplen <= path_mtu || path_mtu <= iphlen + thlen)
+		return skb;
+	mss = path_mtu - iphlen - thlen;
 	if (tcplen - thlen <= mss)
 		return skb;
 

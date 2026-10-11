@@ -31,6 +31,20 @@ This is an independent project, not an upstream Linux, Apple, Intel, Ubuntu,
 Debian, or Proxmox release. It is not a general fix for cable enumeration,
 runtime power management, DHCP, or every TSO interoperability problem.
 
+## Version 0.4.0
+
+This release adds an experimental mechanism that makes the fallback below
+matter less: `rx_segment_learn=1` (default) reads the SYN-ACK MSS and ICMP
+Fragmentation Needed / Packet Too Big messages that leave the host toward the
+Mac and learns each flow's path MTU from them, so the host splits aggregates at
+the real path limit even when `rx_segment_mtu` is wrong, and at a larger size
+where the path allows it, up to the interface MTU. On the PPPoE topology a
+deliberately wrong fallback of 1500 still reached the uplink ceiling with
+learning on, and the local Thunderbolt link measured the same throughput as
+0.3.0. Flows with no record keep the fallback. See
+[learned bounds](docs/path-mtu.md#learned-bounds--experimental-2026-10-11);
+`rx_segment_learn=0` disables it.
+
 ## Version 0.3.1
 
 This release changes one packaged default: `rx_segment_mtu` is now **1280**
@@ -41,8 +55,7 @@ Internet over a PPPoE uplink (MTU 1492) ran at 0.1 Mbit/s; with 1280 they
 reached the uplink's 39 Mbit/s ceiling. See [path MTU](docs/path-mtu.md) for
 the measurement and for when to raise the value again (for example on a
 jumbo LAN). An `/etc/modprobe.d/thunderbolt-net.conf` you created keeps its own
-value; review it after upgrading. The driver itself is unchanged apart from
-the built-in default.
+value; review it after upgrading.
 
 ## Version 0.3.0
 

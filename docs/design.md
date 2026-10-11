@@ -76,12 +76,14 @@ assume this package makes arbitrary mixed-MTU forwarding safe.
 | Parameter | Default | Meaning |
 | --- | --- | --- |
 | `rx_segment` | false | Enable validated RX GSO metadata |
-| `rx_segment_mtu` | 1280 | IP segmentation cap, 68–65522; at most the smallest path MTU |
+| `rx_segment_mtu` | 1280 | Fallback path MTU for rebuilt segments, 68–65522; at most the smallest path MTU the flows traverse |
+| `rx_segment_learn` | true | Experimental: learn each flow's path MTU from forwarded SYN/SYN-ACK MSS and ICMP; overrides the fallback, see [path MTU](path-mtu.md#learned-bounds--experimental-2026-10-11) |
 | `e2e` | true | Existing driver's end-to-end flow control option |
 
 Parameters are read-only after loading. `ethtool -S` exposes
-`rx_normalized_packets`, `rx_normalized_bytes`, `rx_bad_checksum`, and
-`rx_invalid_packets`. Normalized packets count aggregates, not output segments;
+`rx_normalized_packets`, `rx_normalized_bytes`, `rx_bad_checksum`,
+`rx_invalid_packets`, `rx_bound_learned_mss`, `rx_bound_learned_icmp` and
+`rx_bound_hits`. Normalized packets count aggregates, not output segments;
 normalized bytes include the Ethernet header. Counters reset on device removal.
 RX error counters and TCP retransmissions describe different events.
 

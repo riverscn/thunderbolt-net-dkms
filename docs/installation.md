@@ -152,7 +152,7 @@ cat /sys/module/thunderbolt_net/parameters/rx_page_pool
 ethtool -S thunderbolt0
 ```
 
-Expected: module version `0.3.1`, then `Y`, `1280` and `Y`, and normalization
+Expected: module version `0.4.0`, then `Y`, `1280` and `Y`, and normalization
 counters increase under suitable traffic. Interface names can differ.
 
 Use `rmmod`, not `modprobe -r`. Removing the network driver with modprobe also

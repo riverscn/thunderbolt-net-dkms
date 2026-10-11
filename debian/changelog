@@ -1,3 +1,13 @@
+thunderbolt-net (0.4.0-1) unstable; urgency=medium
+
+  * Learn each flow's path MTU from forwarded SYN/SYN-ACK MSS and ICMP
+    (rx_segment_learn, experimental, default on); rx_segment_mtu becomes
+    the fallback for flows without a record.
+  * Add real TCP sessions, including 802.1Q, to the isolated QEMU suite.
+  * Record PPPoE-uplink and local Thunderbolt hardware runs.
+
+ -- Shun Li <riverscn@gmail.com>  Sun, 11 Oct 2026 04:30:00 +0000
+
 thunderbolt-net (0.3.1-1) unstable; urgency=medium
 
   * Lower the default rx_segment_mtu from 1500 to 1280 (IPv6 minimum).

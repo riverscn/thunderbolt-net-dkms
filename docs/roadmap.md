@@ -21,7 +21,7 @@ and [compatibility](compatibility.md).
   download) is not set by the Linux side; see the
   [upload ceiling investigation](upstream-validation.md#upload-ceiling-mac-to-linux).
   Deciding whether it is a macOS transmit limit needs a second peer device.
-- Measure the cost of the 1280 segmentation cap on a jumbo or 10 Gbit/s LAN;
+- Measure the cost of the 1280 fallback path MTU on a jumbo or 10 Gbit/s LAN;
   the [path MTU](path-mtu.md) measurement was bounded by a 40 Mbit/s uplink.
 - Consider splitting the normalization threshold (interface MTU) from the
   segment size (`rx_segment_mtu`); see the open items in [path MTU](path-mtu.md).

@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.4.0
+
+- Learn each flow's path MTU (`rx_segment_learn`, default on, experimental):
+  the SYN/SYN-ACK MSS option and the ICMP Fragmentation Needed / Packet Too
+  Big that leave toward the peer bound each flow and destination, so a
+  normalized aggregate is split at the learned limit instead of
+  `rx_segment_mtu`, never above the interface MTU. A bound below the fallback
+  also lowers the size above which packets are examined. Flows without a
+  record keep the fallback. Counters `rx_bound_learned_mss`,
+  `rx_bound_learned_icmp`, `rx_bound_hits`.
+- Describe `rx_segment_mtu` as the fallback path MTU; the parameter name is
+  unchanged.
+- Add real TCP sessions through a metadata-loss link to the QEMU suite,
+  including an 802.1Q case; build `CONFIG_VLAN_8021Q` into the pinned upstream
+  test kernel. Hardware runs on a PPPoE uplink and the local Thunderbolt link
+  are recorded in `docs/path-mtu.md`.
+
 ## 0.3.1
 
 - Change the packaged and built-in `rx_segment_mtu` default from 1500 to 1280.
