@@ -139,6 +139,9 @@ def main():
         fs = base / 'root'
         for part in ('bin','dev','proc','sys','tmp','run','etc','lib/modules'):
             (fs / part).mkdir(parents=True, exist_ok=True)
+        # Some iproute2 builds keep namespaces under /var/run instead of /run.
+        (fs / 'var').mkdir(exist_ok=True)
+        (fs / 'var/run').symlink_to('../run')
 
         def copy_binary(path):
             target = fs / path.lstrip('/')
