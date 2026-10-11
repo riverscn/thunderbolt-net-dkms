@@ -40,61 +40,26 @@ This is an independent project, not an upstream Linux, Apple, Intel, Ubuntu,
 Debian, or Proxmox release. It is not a general fix for cable enumeration,
 runtime power management, DHCP, or every TSO interoperability problem.
 
-## Version 0.4.0
+## Current release: 0.4.0
 
-This release adds an experimental mechanism that makes the fallback below
-matter less: `rx_segment_learn=1` (default) reads the SYN-ACK MSS and ICMP
-Fragmentation Needed / Packet Too Big messages that leave the host toward the
-Mac and learns each flow's path MTU from them, so the host splits aggregates at
-the real path limit even when `rx_segment_mtu` is wrong, and at a larger size
-where the path allows it, up to the interface MTU. On the PPPoE topology a
-deliberately wrong fallback of 1500 still reached the uplink ceiling with
-learning on, and the local Thunderbolt link measured the same throughput as
-0.3.0. Flows with no record keep the fallback. See
-[learned bounds](docs/path-mtu.md#learned-bounds--experimental-2026-10-11);
-`rx_segment_learn=0` disables it.
+- Driver base: upstream Linux 7.2.9 with older-kernel compatibility; the
+  DKMS build gate allows x86-64 Linux 6.8–6.19 and 7.0–7.2
+  ([compatibility](docs/compatibility.md), [upstream maintenance](docs/upstream-tracking.md)).
+- The package enables RX normalization and page recycling through
+  `/usr/lib/modprobe.d/thunderbolt-net.conf`; override it with the same file
+  name in `/etc/modprobe.d/` ([installation](docs/installation.md)).
+- Each forwarded flow's path MTU is learned from the SYN-ACK and ICMP that pass
+  through the host (`rx_segment_learn`, experimental, 0.4.0); `rx_segment_mtu`
+  is the fallback for flows without a record, 1280 since 0.3.1
+  ([path MTU](docs/path-mtu.md)). If you copied the file to `/etc` before
+  0.3.1, your copy still says 1500.
+- Hardware validation covers one controller and one macOS peer; see the
+  [0.3.0 regression](docs/upstream-validation.md) and the
+  [path MTU measurements](docs/path-mtu.md). Physical disconnect during
+  traffic, suspend/resume and long stress remain open.
 
-## Version 0.3.1
-
-This release changes one packaged default: `rx_segment_mtu` is now **1280**
-instead of 1500. The value is the IP length of the segments the host rebuilds
-from the Mac's TCP aggregates, and it must not exceed the smallest MTU on any
-path beyond the host. With 1500, uploads from the Mac through the host to the
-Internet over a PPPoE uplink (MTU 1492) ran at 0.1 Mbit/s; with 1280 they
-reached the uplink's 39 Mbit/s ceiling. See [path MTU](docs/path-mtu.md) for
-the measurement and for when to raise the value again (for example on a
-jumbo LAN). An `/etc/modprobe.d/thunderbolt-net.conf` you created keeps its own
-value; review it after upgrading.
-
-## Version 0.3.0
-
-This iteration rebases the driver on Linux 7.2.9 and keeps the existing RX
-changes: oversized-TCP normalization, optional page recycling, RX lifecycle
-serialization and the 0.1.1 GRO header correction.
-
-- The package now enables `rx_segment=1 rx_segment_mtu=1500 rx_page_pool=1`
-  (1280 since 0.3.1)
-  through one file, `/usr/lib/modprobe.d/thunderbolt-net.conf`. It is removed
-  with the package; override it with the same name in `/etc/modprobe.d/`.
-  The separate opt-in files of earlier versions are no longer needed.
-- Upstream imports keep their original authorship; local integration and
-  older-kernel compatibility are separate commits. See
-  [upstream maintenance](docs/upstream-tracking.md).
-- The build gate allows x86-64 Linux 6.8–6.19 and 7.0–7.2. CI also builds a
-  checksum-pinned Linux 7.2.9 kernel. See [compatibility](docs/compatibility.md).
-- On Linux 7.2 and newer cores the driver requests the previous 128-microsecond
-  interrupt throttling itself; older cores keep their own moderation.
-
-The [hardware regression](docs/upstream-validation.md) found throughput equal
-to 0.2.0 on a Linux 7.0 host. On Linux 7.2.9, a build without the throttling
-call had 11–44× more interrupts per GiB and about 20% lower download throughput.
-No performance gain over 0.2.0 is claimed. Physical disconnect during traffic,
-suspend/resume and long stress remain open.
-
-Version 0.3.0 is the first release published without the prerelease mark. The
-driver is still out of tree and its hardware validation covers one controller
-and peer combination. Use an independent management path when reloading; [rollback](docs/installation.md#return-to-the-020-driver) is to 0.2.0.
-The [0.2.0 report](docs/validation.md) covers the previous Linux v7.0 baseline.
+Earlier versions and their changes are in [CHANGELOG.md](CHANGELOG.md);
+rollback steps are in [installation](docs/installation.md#return-to-the-020-driver).
 
 ## Install and enable
 

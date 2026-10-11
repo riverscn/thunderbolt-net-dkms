@@ -32,50 +32,21 @@ MTU、DHCP、路由和其他卸载功能仍需分别排查。
 本项目是独立维护的实验，不代表 Linux、Apple、Intel 或任何发行版的官方修复。
 它不处理所有雷电枚举、热插拔、休眠、DHCP 或 TSO 问题。
 
-## 0.4.0 版本
+## 当前版本：0.4.0
 
-本版本加入一个实验性机制，让下面那个兜底值不再那么关键：`rx_segment_learn=1`（默认）
-读取从宿主机发往 Mac 的 SYN-ACK 中的 MSS 选项和 ICMP Fragmentation Needed /
-Packet Too Big 报文，按流学习路径 MTU，于是即使 `rx_segment_mtu` 设错，宿主机也按
-真实路径切分聚合包；路径允许时也会切得更大，上限是接口 MTU。在 PPPoE 拓扑上，故意
-设成 1500 的兜底值配合学习仍然跑满了上行链路，本地雷电链路吞吐与 0.3.0 持平。
-没有记录的流沿用兜底值。详见[学习上界](docs/path-mtu.md#learned-bounds--experimental-2026-10-11)；
-`rx_segment_learn=0` 可关闭。
+- 驱动基线：上游 Linux 7.2.9 加旧内核兼容；DKMS 构建范围为 x86-64 Linux
+  6.8–6.19 和 7.0–7.2（[兼容性](docs/compatibility.md)、[维护流程](docs/upstream-tracking.md)）。
+- 软件包通过 `/usr/lib/modprobe.d/thunderbolt-net.conf` 启用 RX 分段信息和页面
+  回收；如需修改，在 `/etc/modprobe.d/` 下放同名文件（[安装说明](docs/installation.md)）。
+- 每个转发流的路径 MTU 从经过宿主机的 SYN-ACK 和 ICMP 学习（`rx_segment_learn`，
+  实验性，0.4.0 新增）；`rx_segment_mtu` 是没有记录的流的兜底值，0.3.1 起为 1280
+  （[路径 MTU](docs/path-mtu.md)）。如果你在 0.3.1 之前复制过该文件到 `/etc`，副本里
+  仍是 1500。
+- 实机验证只覆盖一种控制器和一台 macOS 对端，见[0.3.0 回归](docs/upstream-validation.md)
+  和[路径 MTU 测量](docs/path-mtu.md)。带流量物理断开、休眠唤醒与长时间压力测试仍未覆盖。
 
-## 0.3.1 版本
-
-本版本只改一个打包默认值：`rx_segment_mtu` 从 1500 改为 **1280**。它是宿主机
-把 Mac 的 TCP 聚合包重新切分时每段的 IP 长度，不能超过宿主机之后任何一跳的
-最小 MTU。设为 1500 时，Mac 经宿主机、再经 PPPoE（MTU 1492）上行到公网的上传
-只有 0.1 Mbit/s；设为 1280 后达到上行链路 39 Mbit/s 的上限。测量过程和何时
-应该调高（例如全程 jumbo 的局域网）见[路径 MTU](docs/path-mtu.md)。你自己创建的
-`/etc/modprobe.d/thunderbolt-net.conf` 会保留原值，升级后请检查。
-
-## 0.3.0 版本
-
-本次迭代将驱动基线更新到 Linux 7.2.9，并保留现有 RX 改动：超大 TCP 包分段信息、
-可选的 RX 页面回收、接收启动与停止的串行化，以及 0.1.1 的 GRO 顺序修正。
-
-- 软件包现在通过一个文件 `/usr/lib/modprobe.d/thunderbolt-net.conf` 默认启用
-  `rx_segment=1 rx_segment_mtu=1500 rx_page_pool=1`（0.3.1 起为 1280）。该文件随软件包卸载而删除；
-  如需修改，在 `/etc/modprobe.d/` 下放一个同名文件。以前版本要求手动创建的
-  两个配置文件已不再需要。
-- 上游提交保留原作者信息；本地集成和旧内核兼容是独立提交，参见
-  [维护流程](docs/upstream-tracking.md)。
-- DKMS 构建范围为 x86-64 Linux 6.8–6.19 和 7.0–7.2；CI 另外编译固定校验和的
-  Linux 7.2.9 内核。参见[兼容性](docs/compatibility.md)。
-- 在 Linux 7.2 及更新的内核上，驱动自行请求原有的 128µs 中断节流；旧内核
-  沿用其自身的设置。
-
-[实机回归](docs/upstream-validation.md)显示：在 Linux 7.0 宿主机上吞吐与 0.2.0
-持平；在 Linux 7.2.9 上，若不调用节流接口，每 GiB 中断数增加 11–44 倍，下载吞吐
-下降约 20%。本版本不宣称比 0.2.0 有性能提升。带流量物理断开、休眠唤醒与长时间
-压力测试仍未覆盖。
-
-0.3.0 是第一个不带预发布标记的版本。驱动仍是树外模块，实机验证只覆盖一种
-控制器和对端组合。重新加载时应保留独立管理通路；需要恢复时
-[回退到 0.2.0](docs/installation.md#return-to-the-020-driver)。
-[0.2.0 验证报告](docs/validation.md)对应此前的 Linux v7.0 基线。
+更早版本的变更见 [CHANGELOG.md](CHANGELOG.md)；回退步骤见
+[安装说明](docs/installation.md#return-to-the-020-driver)。
 
 ## 安装
 
