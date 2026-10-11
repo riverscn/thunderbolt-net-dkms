@@ -1,10 +1,10 @@
-# Path MTU and the segmentation cap
+# Path MTU and the fallback setting
 
 `rx_segment_mtu` is the one setting of this package that depends on the
 network beyond the Thunderbolt link. This page explains what it does, why the
 default changed from 1500 to 1280 in 0.3.1, and when to raise it.
 
-## What the cap is
+## What the setting is: a fallback path MTU
 
 The Thunderbolt transport carries a peer's whole TSO aggregate (up to 64 KiB)
 and the receiving driver reassembles it into one packet. The sender's segment
@@ -12,16 +12,25 @@ size is not carried, so the Linux host cannot reproduce the original
 segmentation. With `rx_segment=1` the driver instead attaches synthetic GSO
 metadata so the kernel can split the aggregate before forwarding it.
 
-`rx_segment_mtu` is used twice on the receive path, with one value:
+To split, the driver needs a **path MTU** for the flow: the largest IP packet
+the route beyond this host carries. The word means the same as in the kernel's
+own routes and PMTU cache, and it is a property of each flow's path, not of any
+interface. Since 0.3.1 the driver learns it per flow where it can (see
+[learned bounds](#learned-bounds--experimental-2026-10-11)); `rx_segment_mtu`
+is the **fallback** for flows with no record. It is used twice, with one value:
 
 - **Threshold**: a TCP packet whose IP length is at most
-  `min(interface MTU, rx_segment_mtu)` is passed through unchanged.
+  `min(interface MTU, rx_segment_mtu, smallest learned bound)` is passed
+  through unchanged.
 - **Segment size**: a larger one is marked to be split into segments whose IP
-  length equals that same value.
+  length equals the flow's path MTU: the learned bound if there is one, else
+  `rx_segment_mtu`, never above the interface MTU.
 
-It is a guess at the largest IP packet every path beyond the host can carry.
-It is not the Thunderbolt interface MTU, it is not negotiated with the peer, and
-it does not affect transmission toward the peer.
+The fallback is a guess at the largest IP packet every path beyond the host can
+carry. It is not the Thunderbolt interface MTU, it is not negotiated with the
+peer, and it does not affect transmission toward the peer. Keeping the name
+`rx_segment_mtu` is deliberate: it is a path MTU, and renaming a parameter that
+installed configurations already set would silently drop their value.
 
 ## Why the guess has to be small
 

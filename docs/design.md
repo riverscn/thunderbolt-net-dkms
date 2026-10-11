@@ -76,8 +76,8 @@ assume this package makes arbitrary mixed-MTU forwarding safe.
 | Parameter | Default | Meaning |
 | --- | --- | --- |
 | `rx_segment` | false | Enable validated RX GSO metadata |
-| `rx_segment_mtu` | 1280 | IP segmentation cap, 68–65522; at most the smallest path MTU |
-| `rx_segment_learn` | true | Experimental: bound flows from forwarded SYN-ACK MSS and ICMP, see [path MTU](path-mtu.md#learned-bounds--experimental-2026-10-11) |
+| `rx_segment_mtu` | 1280 | Fallback path MTU for rebuilt segments, 68–65522; at most the smallest path MTU the flows traverse |
+| `rx_segment_learn` | true | Experimental: learn each flow's path MTU from forwarded SYN/SYN-ACK MSS and ICMP; overrides the fallback, see [path MTU](path-mtu.md#learned-bounds--experimental-2026-10-11) |
 | `e2e` | true | Existing driver's end-to-end flow control option |
 
 Parameters are read-only after loading. `ethtool -S` exposes

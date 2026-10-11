@@ -240,20 +240,21 @@ static bool tbnet_rx_segment;
 module_param_named(rx_segment, tbnet_rx_segment, bool, 0444);
 MODULE_PARM_DESC(rx_segment, "Experimental verified RX TCP GSO metadata (default: false)");
 
-/* IP length of the segments rebuilt from an oversized aggregate. The sender's
- * MSS is not available, so this must not exceed the smallest path MTU the
- * forwarded flows traverse; 1280 is the IPv6 minimum.
+/* Fallback path MTU: the IP length of the segments rebuilt from an oversized
+ * aggregate when nothing has been learned for its flow. The sender's MSS is
+ * not available, so this must not exceed the smallest path MTU the forwarded
+ * flows traverse; 1280 is the IPv6 minimum.
  */
 static unsigned int tbnet_rx_segment_mtu = 1280;
 module_param_named(rx_segment_mtu, tbnet_rx_segment_mtu, uint, 0444);
-MODULE_PARM_DESC(rx_segment_mtu, "RX segmentation IP size cap, at most the smallest path MTU (68..65522, default: 1280)");
+MODULE_PARM_DESC(rx_segment_mtu, "Fallback path MTU for rebuilding a peer's TCP segments when no bound is learned for the flow (68..65522, default: 1280)");
 
 /* Experimental: bound each flow from the SYN-ACK MSS and ICMP feedback that
  * leave toward the peer; the cap then only covers flows with no such record.
  */
 static bool tbnet_rx_segment_learn = true;
 module_param_named(rx_segment_learn, tbnet_rx_segment_learn, bool, 0444);
-MODULE_PARM_DESC(rx_segment_learn, "Learn per-flow RX segment bounds from forwarded SYN-ACK and ICMP (default: true)");
+MODULE_PARM_DESC(rx_segment_learn, "Learn each flow's path MTU from forwarded SYN/SYN-ACK MSS and ICMP; overrides rx_segment_mtu (default: true)");
 
 static bool tbnet_e2e = true;
 module_param_named(e2e, tbnet_e2e, bool, 0444);

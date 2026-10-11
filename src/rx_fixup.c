@@ -469,7 +469,7 @@ static bool tbnet_tcp_options_supported(const struct tcphdr *th)
 	return true;
 }
 
-struct sk_buff *tbnet_rx_fixup(struct sk_buff *skb, unsigned int mtu)
+struct sk_buff *tbnet_rx_fixup(struct sk_buff *skb, unsigned int path_mtu)
 {
 	unsigned int nhoff = ETH_HLEN, iphlen, iplen, tcplen, thlen, mss, threshold;
 	struct tcphdr *th;
@@ -478,7 +478,7 @@ struct sk_buff *tbnet_rx_fixup(struct sk_buff *skb, unsigned int mtu)
 	__sum16 check;
 	int err = -EINVAL;
 
-	if (mtu < 68 || mtu > 65522 || skb_is_gso(skb) ||
+	if (path_mtu < 68 || path_mtu > 65522 || skb_is_gso(skb) ||
 	    skb->ip_summed != CHECKSUM_NONE || skb->encapsulation ||
 	    skb_has_frag_list(skb))
 		return skb;
@@ -500,7 +500,7 @@ struct sk_buff *tbnet_rx_fixup(struct sk_buff *skb, unsigned int mtu)
 	/* Packets within the cap may still exceed a learned bound; parse them
 	 * only when some bound below the cap exists.
 	 */
-	threshold = mtu;
+	threshold = path_mtu;
 	if (skb->dev) {
 		unsigned int floor = READ_ONCE(tbnet_bound_floor);
 
@@ -562,7 +562,7 @@ struct sk_buff *tbnet_rx_fixup(struct sk_buff *skb, unsigned int mtu)
 	 */
 	if (!th->ack || th->syn || th->rst || th->urg ||
 	    (((const u8 *)th)[12] & 0x0f) ||
-	    !tbnet_tcp_options_supported(th) || mtu <= iphlen + thlen)
+	    !tbnet_tcp_options_supported(th) || path_mtu <= iphlen + thlen)
 		return skb;
 	/* A bound learned from this flow's control packets is more specific
 	 * than the configured cap in either direction, within the device MTU.
@@ -582,11 +582,11 @@ struct sk_buff *tbnet_rx_fixup(struct sk_buff *skb, unsigned int mtu)
 						   &((const struct ipv6hdr *)ipp)->daddr,
 						   th->source, th->dest);
 		if (bound)
-			mtu = min(bound, READ_ONCE(skb->dev->mtu));
+			path_mtu = min(bound, READ_ONCE(skb->dev->mtu));
 	}
-	if (iplen <= mtu || mtu <= iphlen + thlen)
+	if (iplen <= path_mtu || path_mtu <= iphlen + thlen)
 		return skb;
-	mss = mtu - iphlen - thlen;
+	mss = path_mtu - iphlen - thlen;
 	if (tcplen - thlen <= mss)
 		return skb;
 

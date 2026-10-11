@@ -7,10 +7,10 @@
 
 /* Input/output data points at the Ethernet header. Always consumes input:
  * returns it unchanged or with validated GSO metadata, or ERR_PTR after freeing it.
- * With skb->dev set and a learned bound for the flow, that bound replaces mtu
- * as the segment size (never above the device MTU).
+ * path_mtu is the fallback: with skb->dev set and a bound learned for the
+ * flow, that bound is the path MTU instead (never above the device MTU).
  */
-struct sk_buff *tbnet_rx_fixup(struct sk_buff *skb, unsigned int mtu);
+struct sk_buff *tbnet_rx_fixup(struct sk_buff *skb, unsigned int path_mtu);
 
 /* Learned per-flow segment bounds. The transport does not carry the sender's
  * MSS, but the control packets that constrain it pass through this host in
