@@ -1,3 +1,16 @@
+thunderbolt-net (0.4.0-1) unstable; urgency=medium
+
+  The driver now learns each forwarded flow's path MTU from the SYN/SYN-ACK
+  MSS option and the ICMP Fragmentation Needed / Packet Too Big messages
+  that leave the host toward the Thunderbolt peer, and splits that flow's
+  aggregates at the learned limit. rx_segment_mtu remains the fallback for
+  flows without a record. This is on by default and experimental; set
+  rx_segment_learn=0 in /etc/modprobe.d/thunderbolt-net.conf to keep the
+  0.3.1 behavior. New ethtool counters: rx_bound_learned_mss,
+  rx_bound_learned_icmp, rx_bound_hits.
+
+ -- Shun Li <riverscn@gmail.com>  Sun, 11 Oct 2026 04:30:00 +0000
+
 thunderbolt-net (0.3.1-1) unstable; urgency=medium
 
   The packaged default rx_segment_mtu changes from 1500 to 1280. This value

@@ -36,8 +36,9 @@ def render(repository):
         raise ValueError('packaging/thunderbolt-net.conf must hold one options line')
     return f'''## Installation / upgrade
 
-**{version}: Linux 7.2.9 driver baseline with older-kernel compatibility.**
-The package now enables RX normalization and page recycling by default.
+**{version}: learns each forwarded flow's path MTU; `rx_segment_mtu` (1280) is the fallback.**
+The package enables RX normalization, learned bounds and page recycling by default;
+`rx_segment_learn=0` keeps the previous fixed behavior. See [path MTU]({docs}/path-mtu.md).
 Review the [current validation report]({docs}/upstream-validation.md) before deployment.
 This is a source-only DKMS package of an out-of-tree driver for x86-64 Linux;
 its hardware validation covers one controller and peer combination. Use a

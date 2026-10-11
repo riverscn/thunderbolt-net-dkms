@@ -123,7 +123,7 @@ the candidate to bracket it. `reload` restores the interface MTU and bridge
 membership and waits for the peer; it refuses to run while the default route
 uses the interface unless `--force` is given. `--param` values are added after
 the `modprobe.d` configuration and win; an omitted parameter keeps its
-configured value, which with the 0.3.1 package is `rx_segment=1
+configured value, which with the 0.4.0 package is `rx_segment=1
 rx_segment_mtu=1280 rx_page_pool=1`. Pass every parameter a comparison depends
 on explicitly (for example `--param rx_page_pool=0` for a pool-off phase) and
 check the `params` column of `results.csv`.

@@ -15,7 +15,7 @@ metadata so the kernel can split the aggregate before forwarding it.
 To split, the driver needs a **path MTU** for the flow: the largest IP packet
 the route beyond this host carries. The word means the same as in the kernel's
 own routes and PMTU cache, and it is a property of each flow's path, not of any
-interface. Since 0.3.1 the driver learns it per flow where it can (see
+interface. Since 0.4.0 the driver learns it per flow where it can (see
 [learned bounds](#learned-bounds--experimental-2026-10-11)); `rx_segment_mtu`
 is the **fallback** for flows with no record. It is used twice, with one value:
 
