@@ -31,6 +31,19 @@ This is an independent project, not an upstream Linux, Apple, Intel, Ubuntu,
 Debian, or Proxmox release. It is not a general fix for cable enumeration,
 runtime power management, DHCP, or every TSO interoperability problem.
 
+## Version 0.3.1
+
+This release changes one packaged default: `rx_segment_mtu` is now **1280**
+instead of 1500. The value is the IP length of the segments the host rebuilds
+from the Mac's TCP aggregates, and it must not exceed the smallest MTU on any
+path beyond the host. With 1500, uploads from the Mac through the host to the
+Internet over a PPPoE uplink (MTU 1492) ran at 0.1 Mbit/s; with 1280 they
+reached the uplink's 39 Mbit/s ceiling. See [path MTU](docs/path-mtu.md) for
+the measurement and for when to raise the value again (for example on a
+jumbo LAN). An `/etc/modprobe.d/thunderbolt-net.conf` you created keeps its own
+value; review it after upgrading. The driver itself is unchanged apart from
+the built-in default.
+
 ## Version 0.3.0
 
 This iteration rebases the driver on Linux 7.2.9 and keeps the existing RX
@@ -38,6 +51,7 @@ changes: oversized-TCP normalization, optional page recycling, RX lifecycle
 serialization and the 0.1.1 GRO header correction.
 
 - The package now enables `rx_segment=1 rx_segment_mtu=1500 rx_page_pool=1`
+  (1280 since 0.3.1)
   through one file, `/usr/lib/modprobe.d/thunderbolt-net.conf`. It is removed
   with the package; override it with the same name in `/etc/modprobe.d/`.
   The separate opt-in files of earlier versions are no longer needed.
@@ -109,7 +123,7 @@ on disk, not necessarily the one currently running.
 The package installs its defaults in `/usr/lib/modprobe.d/thunderbolt-net.conf`:
 
 ```conf
-options thunderbolt_net rx_segment=1 rx_segment_mtu=1500 rx_page_pool=1
+options thunderbolt_net rx_segment=1 rx_segment_mtu=1280 rx_page_pool=1
 ```
 
 This enables the macOS TSO forwarding workaround and RX page recycling. The file
@@ -134,7 +148,7 @@ cat /sys/module/thunderbolt_net/parameters/rx_segment_mtu
 cat /sys/module/thunderbolt_net/parameters/rx_page_pool
 ```
 
-With the defaults, expect `Y`, `1500`, and `Y`, respectively.
+With the defaults, expect `Y`, `1280`, and `Y`, respectively.
 
 ## Build
 

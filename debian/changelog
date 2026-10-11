@@ -1,3 +1,12 @@
+thunderbolt-net (0.3.1-1) unstable; urgency=medium
+
+  * Lower the default rx_segment_mtu from 1500 to 1280 (IPv6 minimum).
+  * The cap must not exceed the smallest path MTU beyond the host; 1500
+    stalled macOS uploads behind a PPPoE uplink.
+  * Document the cap's semantics and measurement in docs/path-mtu.md.
+
+ -- Shun Li <riverscn@gmail.com>  Sun, 11 Oct 2026 01:52:06 +0000
+
 thunderbolt-net (0.3.0-1) unstable; urgency=medium
 
   * Rebase the driver on Linux 7.2.9 with attributed upstream imports.

@@ -12,3 +12,5 @@ docs/iperf3-results.csv
 docs/upstream-tracking.md
 docs/upstream-validation.md
 docs/upstream-iperf3-results.csv
+docs/path-mtu.md
+docs/path-mtu-results.csv

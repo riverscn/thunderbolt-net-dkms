@@ -50,7 +50,7 @@ def prepare(destination):
     prefix = prefix.replace('#include "trace.h"', '')
     (destination / 'core.inc').write_text(
         prefix + '\nstatic bool tbnet_rx_page_pool, tbnet_rx_segment;\n'
-        'static unsigned int tbnet_rx_segment_mtu = 1500;\n' +
+        'static unsigned int tbnet_rx_segment_mtu = 1280;\n' +
         '\n\n'.join(bodies.values()) + '\n')
     for name in ('harness.c', 'sanity.c', 'Makefile'):
         shutil.copy2(HERE / name, destination / name)

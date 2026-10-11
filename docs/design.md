@@ -25,9 +25,12 @@ where the egress needs it. This avoids splitting every incoming aggregate into
 many small packets on the driver receive path. `DODGY` invokes conservative GSO
 handling and prevents GRO from merging these synthesized boundaries further.
 
-Segment size is inferred from `min(interface MTU, rx_segment_mtu)` minus headers.
+Segment size is inferred from `min(interface MTU, rx_segment_mtu)` minus headers;
+the same value is the threshold above which a packet is treated as an aggregate.
 The Thunderbolt transport does not supply the original TCP segment boundaries.
-This limitation matters for authentication and transport extensions.
+This limitation matters for authentication and transport extensions. The cap
+must not exceed the smallest MTU on any path the forwarded flows take; see
+[path MTU](path-mtu.md) for the reasoning and a measurement.
 
 ## Ethernet header length and GRO ordering
 
@@ -61,16 +64,19 @@ SYN/RST/URG, reserved/AccECN bits, TCP MD5/AO/MPTCP or unrecognized options,
 encapsulated packets and `frag_list` SKBs. Hardware MTU 9000 forwarding, lower-MTU
 tunnels, unusual VLAN layouts, and other architectures need separate validation.
 
-The configured cap does not discover route MTUs or downstream tunnels. Use a
-cap appropriate for every intended egress path; do not assume this package makes
-arbitrary mixed-MTU forwarding safe.
+The configured cap does not discover route MTUs or downstream tunnels, and no
+MTU visible to the driver (ingress interface, bridge or local egress) describes
+them. A cap above the real path limit stalls the peer's uploads through this
+host; a cap below it only costs efficiency. The packaged default is 1280, the
+IPv6 minimum. Raise it only for paths known to carry larger packets; do not
+assume this package makes arbitrary mixed-MTU forwarding safe.
 
 ## Parameters and counters
 
 | Parameter | Default | Meaning |
 | --- | --- | --- |
 | `rx_segment` | false | Enable validated RX GSO metadata |
-| `rx_segment_mtu` | 1500 | IP segmentation cap, 68–65522 |
+| `rx_segment_mtu` | 1280 | IP segmentation cap, 68–65522; at most the smallest path MTU |
 | `e2e` | true | Existing driver's end-to-end flow control option |
 
 Parameters are read-only after loading. `ethtool -S` exposes

@@ -106,7 +106,7 @@ that address once in the shell, then run the steps in the same shell:
 PEER=198.51.100.2   # replace with the Mac's Thunderbolt Bridge IP address
 sudo python3 scripts/hw-test.py info --peer "$PEER"
 sudo python3 scripts/hw-test.py reload --peer "$PEER" \
-  --param rx_segment=1 --param rx_segment_mtu=1500 --param rx_page_pool=1
+  --param rx_segment=1 --param rx_segment_mtu=1280 --param rx_page_pool=1
 sudo python3 scripts/hw-test.py run --peer "$PEER" --phase v0.2.0
 # install the candidate package, then repeat with a new phase label
 sudo python3 scripts/hw-test.py run --peer "$PEER" --phase candidate
@@ -123,8 +123,8 @@ the candidate to bracket it. `reload` restores the interface MTU and bridge
 membership and waits for the peer; it refuses to run while the default route
 uses the interface unless `--force` is given. `--param` values are added after
 the `modprobe.d` configuration and win; an omitted parameter keeps its
-configured value, which with the 0.3.0 package is `rx_segment=1
-rx_segment_mtu=1500 rx_page_pool=1`. Pass every parameter a comparison depends
+configured value, which with the 0.3.1 package is `rx_segment=1
+rx_segment_mtu=1280 rx_page_pool=1`. Pass every parameter a comparison depends
 on explicitly (for example `--param rx_page_pool=0` for a pool-off phase) and
 check the `params` column of `results.csv`.
 

@@ -183,6 +183,7 @@ test "$($B cat /sys/module/thunderbolt_net/parameters/rx_page_pool)" = N
 $B rmmod thunderbolt_net
 $B insmod /thunderbolt_net.ko rx_segment=1 rx_page_pool=1
 test "$($B cat /sys/module/thunderbolt_net/parameters/rx_page_pool)" = Y
+test "$($B cat /sys/module/thunderbolt_net/parameters/rx_segment_mtu)" = 1280
 $B rmmod thunderbolt_net
 $B insmod /tbnet_path_test.ko
 '''

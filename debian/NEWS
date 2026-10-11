@@ -1,3 +1,20 @@
+thunderbolt-net (0.3.1-1) unstable; urgency=medium
+
+  The packaged default rx_segment_mtu changes from 1500 to 1280. This value
+  is the IP length of the segments the host rebuilds from the peer's TCP
+  aggregates and must not exceed the smallest MTU on any path beyond the
+  host. 1500 stalled uploads from a Mac through the host behind a PPPoE
+  uplink (MTU 1492); 1280, the IPv6 minimum, is safe on any path and only
+  costs some efficiency on jumbo networks.
+
+  The new value applies on the next module load or reboot. If you copied the
+  file to /etc/modprobe.d/thunderbolt-net.conf, your copy keeps 1500; edit it
+  if your traffic leaves the host through a smaller path. To raise the value
+  again on a network whose every hop carries larger packets, see
+  docs/path-mtu.md.
+
+ -- Shun Li <riverscn@gmail.com>  Sun, 11 Oct 2026 01:52:06 +0000
+
 thunderbolt-net (0.3.0-1) unstable; urgency=medium
 
   This version installs /usr/lib/modprobe.d/thunderbolt-net.conf, which
