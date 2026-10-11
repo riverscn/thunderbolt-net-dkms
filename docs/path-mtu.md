@@ -154,6 +154,19 @@ four uploads reached 36.9, 6.2, 38.1 and 39.6 Mbit/s against the uplink's
 retransmissions and a tenth of the aggregates, the same uplink pause seen once
 in the cap-1280 phase. Rows `learn-cap1500` in [the CSV](path-mtu-results.csv).
 
+With the shipping defaults (`rx_segment_mtu=1280 rx_segment_learn=1`) and the
+fixes below, three 30-second uploads to the same server reached 29.7, 35.7 and
+33.4 Mbit/s with no ICMP at all: the clamped SYN-ACK alone set every bound
+(rows `learn-default-30s`). On the same load, direct Mac ↔ host iperf3 over the
+Thunderbolt link measured 24.6 / 24.6 / 24.6 Gbit/s up and 29.5 / 28.9 /
+29.7 Gbit/s down, against 24.6 / 24.6 / 24.6 and 30.0 / 30.0 / 29.8 with the
+0.3.0 DKMS module minutes earlier: no measurable cost on the local path, where
+every aggregate now also goes through one table lookup. No kernel warning was
+logged, and the module unloaded cleanly each time.
+
+`rx_bound_hits` counts lookups that found a record, including packets that
+then needed no split, so it can exceed `rx_normalized_packets`.
+
 A learned bound below the cap also lowers the size above which a packet is
 examined, so an aggregate between the bound and the cap is split as well;
 without that, such packets passed through unmarked and were rejected
