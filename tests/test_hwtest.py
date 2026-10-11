@@ -75,7 +75,7 @@ class HardwareTestHelperTests(unittest.TestCase):
         def row(phase, direction, rate):
             r = {k: '0' for k in hw.CSV_FIELDS}
             r.update(phase=phase, direction=direction, receiver_gbit_s=str(rate),
-                     transport_verified='yes', params='rx_segment=Y')
+                     transport_verified='yes', params='rx_segment=Y', target='')
             return r
         rows = [row('v0.2.0', 'up', 20), row('v0.2.0', 'up', 22), row('v0.2.0', 'up', 30),
                 row('candidate', 'up', 24.2), row('candidate', 'down', 28)]
@@ -83,6 +83,14 @@ class HardwareTestHelperTests(unittest.TestCase):
         self.assertIn('| v0.2.0 | up | 3 | 22.00 |', text)
         self.assertIn('+10.0%', text)
         self.assertIn('| candidate | down | 1 | 28.00 | 28.00–28.00 | 0 | — |', text)
+        self.assertNotIn('forwarded', text)
+        # Forwarded phases (a target beyond the host) report in Mbit/s separately
+        # and stay out of the link table.
+        forwarded = dict(row('cap1280', 'up', 0.0371), target='203.0.113.9',
+                         rx_bound_hits='40', rx_normalized_packets='41')
+        text = hw.summarize(rows + [forwarded])
+        self.assertNotIn('| cap1280 | up |', text)
+        self.assertIn('| cap1280 | 1 | 37.1 | 37.1–37.1 | 0 | 41 | 0/0/40 |', text)
 
 if __name__ == '__main__':
     unittest.main()
