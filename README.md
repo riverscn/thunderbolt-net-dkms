@@ -81,13 +81,25 @@ sudo apt install build-essential dkms curl ca-certificates coreutils kmod ethtoo
 
 If already root, omit `sudo`. DKMS must be >= 3.0.10 and the headers must match
 the **exact running kernel**. See [prerequisite checks](docs/installation.md#install-prerequisites-first).
-Download the release package and verify `SHA256SUMS`, then install:
+In a **new, empty directory**, download the newest release's package and
+checksum file, verify, and install:
 
 ```sh
-sudo apt install ./thunderbolt-net-dkms_0.3.0-1_all.deb
+curl -fsSL "https://api.github.com/repos/riverscn/thunderbolt-net-dkms/releases?per_page=1" \
+  | grep -oE '"browser_download_url": *"[^"]*(_all\.deb|/SHA256SUMS)"' | cut -d'"' -f4 \
+  | xargs -n1 curl -fLO
+sha256sum --check --ignore-missing SHA256SUMS && sudo apt install ./thunderbolt-net-dkms_*_all.deb
 dkms status -m thunderbolt-net
 modinfo -n thunderbolt_net
 ```
+
+The first command asks the GitHub API for the most recent release, including
+prereleases (every release so far is a prerelease, so GitHub's
+`releases/latest` link does not resolve), and downloads its `.deb` and
+`SHA256SUMS`. Confirm that the checksum line reports `OK` before installing. To
+pin a version instead, download both files from that release's page on
+[Releases](https://github.com/riverscn/thunderbolt-net-dkms/releases) and run
+the same two commands.
 
 The `.deb` contains source, not a precompiled kernel or a machine-specific module.
 DKMS builds the replacement for supported installed kernels. Package installation
