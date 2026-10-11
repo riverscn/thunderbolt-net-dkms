@@ -32,6 +32,7 @@ CSV_FIELDS = [
     'invalid_packets', 'tx_errors', 'tx_dropped', 'softnet_dropped',
     'rx_normalized_packets', 'transport_verified', 'kernel_alerts',
     'module_version', 'srcversion', 'params', 'kernel', 'mtu', 'streams', 'seconds',
+    'target', 'rx_bound_learned_mss', 'rx_bound_learned_icmp', 'rx_bound_hits',
 ]
 SYSFS_COUNTERS = ('rx_bytes', 'tx_bytes', 'rx_errors', 'rx_dropped',
                   'tx_errors', 'tx_dropped')
@@ -200,8 +201,12 @@ class KernelLog:
 # --- iperf3 ----------------------------------------------------------------
 
 
-def run_order(repeat):
-    """Alternate directions, mirroring each pair: up, down, down, up, ..."""
+def run_order(repeat, forward=False):
+    """Alternate directions, mirroring each pair: up, down, down, up, ...
+    A forwarding run only uploads: the peer sends through the host.
+    """
+    if forward:
+        return ['up'] * repeat
     order = []
     for i in range(repeat):
         order += ['up', 'down'] if i % 2 == 0 else ['down', 'up']
@@ -210,12 +215,17 @@ def run_order(repeat):
 
 def iperf_argv(args, direction):
     # "up" means macOS sends to the Linux side: the Linux-side client reverses.
-    argv = shlex.split(args.exec_prefix or '') + [
-        'iperf3', '-c', args.peer, '-J', '-t', str(args.time), '-O', str(args.omit),
+    # In a forwarding run the client runs on the peer and sends toward the
+    # target beyond the host, so no reversal is needed.
+    forward = getattr(args, 'forward', False)
+    prefix = args.client if forward else (args.exec_prefix or '')
+    server = args.target if forward else args.peer
+    argv = shlex.split(prefix) + [
+        'iperf3', '-c', server, '-J', '-t', str(args.time), '-O', str(args.omit),
         '-P', str(args.streams), '-p', str(args.port)]
     if args.bind:
         argv += ['-B', args.bind]
-    if direction == 'up':
+    if direction == 'up' and not forward:
         argv.append('-R')
     return argv
 
@@ -258,6 +268,10 @@ def make_row(args, ctx, direction, sample, result, before, after, alerts):
         'transport_verified': 'yes' if verified else 'NO',
         'kernel_alerts': 'unchecked' if alerts is None else len(alerts),
         **ctx,
+        'target': getattr(args, 'target', '') or '',
+        'rx_bound_learned_mss': delta(before, after, 'rx_bound_learned_mss'),
+        'rx_bound_learned_icmp': delta(before, after, 'rx_bound_learned_icmp'),
+        'rx_bound_hits': delta(before, after, 'rx_bound_hits'),
     }
 
 # --- subcommands -----------------------------------------------------------
@@ -379,7 +393,13 @@ def cmd_reload(args):
 
 
 def cmd_run(args):
-    if not shutil.which('iperf3') and not args.exec_prefix:
+    forward = getattr(args, 'forward', False)
+    if forward:
+        args.exec_prefix = None
+        args.bind = None
+        args.streams = 1
+        args.peer = args.peer or ''
+    if not shutil.which('iperf3') and not args.exec_prefix and not forward:
         sys.exit('iperf3 is not installed (apt install iperf3)')
     iface = pick_iface(args.iface)
     out = pathlib.Path(args.output)
@@ -404,7 +424,7 @@ def cmd_run(args):
         if new:
             writer.writeheader()
         samples = {'up': 0, 'down': 0}
-        for direction in run_order(args.repeat):
+        for direction in run_order(args.repeat, forward):
             samples[direction] += 1
             before = snapshot(iface)
             log.drain()
@@ -422,15 +442,21 @@ def cmd_run(args):
             except ValueError:
                 data = {'error': p.stderr.strip() or 'no JSON output'}
             if 'error' in data:
-                sys.exit(f"iperf3 {direction} failed: {redact(str(data['error']), [(args.peer, '<peer>')])}")
+                labels = [(a, l) for a, l in ((args.peer, '<peer>'), (getattr(args, 'target', ''), '<target>')) if a]
+                sys.exit(f"iperf3 {direction} failed: {redact(str(data['error']), labels)}")
             alerts = log.drain()
             row = make_row(args, ctx, direction, samples[direction],
                            parse_iperf(data), before, after,
                            None if alerts is None else [l for l in alerts if ALERT.search(l)])
             writer.writerow(row)
             fh.flush()
+            rate = float(row['receiver_gbit_s'])
+            shown = f'{rate * 1000:.1f} Mbit/s' if forward else f'{rate:.2f} Gbit/s'
+            bounds = (f" bounds mss/icmp/hits={row['rx_bound_learned_mss']}/"
+                      f"{row['rx_bound_learned_icmp']}/{row['rx_bound_hits']}" if forward else '')
             print(f"{args.phase} {direction}#{samples[direction]}: "
-                  f"{float(row['receiver_gbit_s']):.2f} Gbit/s retrans={row['tcp_retransmits']} "
+                  f"{shown} retrans={row['tcp_retransmits']} "
+                  f"normalized={row['rx_normalized_packets']}{bounds} "
                   f"verified={row['transport_verified']} alerts={row['kernel_alerts']}", flush=True)
             if alerts:
                 relevant = [l for l in alerts if ALERT.search(l) or RELEVANT.search(l)]
@@ -452,7 +478,8 @@ def summarize(rows, baseline=None):
              '| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: |']
     for phase in phases:
         for direction in ('up', 'down'):
-            sel = [r for r in rows if r['phase'] == phase and r['direction'] == direction]
+            sel = [r for r in rows if r['phase'] == phase and r['direction'] == direction
+                   and not r.get('target')]
             if not sel:
                 continue
             rates = [float(r['receiver_gbit_s']) for r in sel]
@@ -471,6 +498,23 @@ def summarize(rows, baseline=None):
                 f"{max(retrans) if retrans else '?'} | {change} | {bad} | "
                 f"{'all' if all(r['transport_verified'] == 'yes' for r in sel) else 'NO'} | "
                 f"{'unchecked' if 'unchecked' in alerts else sum(int(a) for a in alerts)} |")
+    forward_rows = [r for r in rows if r.get('target')]
+    if forward_rows:
+        lines += ['', '| Phase (forwarded) | n | Median Mbit/s | Min–max | Retrans (max) | '
+                  'Normalized | Bounds mss/icmp/hits |',
+                  '| --- | ---: | ---: | ---: | ---: | ---: | ---: |']
+        for phase in phases:
+            sel = [r for r in forward_rows if r['phase'] == phase]
+            if not sel:
+                continue
+            rates = [float(r['receiver_gbit_s']) * 1000 for r in sel]
+            retrans = [int(r['tcp_retransmits']) for r in sel if str(r['tcp_retransmits']).isdigit()]
+            norm = sum(int(r['rx_normalized_packets']) for r in sel)
+            bounds = '/'.join(str(sum(int(r.get(k) or 0) for r in sel)) for k in
+                              ('rx_bound_learned_mss', 'rx_bound_learned_icmp', 'rx_bound_hits'))
+            lines.append(f'| {phase} | {len(sel)} | {statistics.median(rates):.1f} | '
+                         f'{min(rates):.1f}–{max(rates):.1f} | '
+                         f"{max(retrans) if retrans else '?'} | {norm} | {bounds} |")
     builds = ['', 'Builds:']
     for phase in phases:
         r = next(r for r in rows if r['phase'] == phase)
@@ -486,8 +530,12 @@ def cmd_summary(args):
         rows = list(csv.DictReader(fh))
     if not rows:
         sys.exit('no results recorded')
+    forwarded = sorted({r['target'] for r in rows if r.get('target')})
     text = ['## Hardware test summary', '',
-            '"up" = macOS → Linux, "down" = Linux → macOS. Rates are receiver medians.', '',
+            '"up" = macOS → Linux, "down" = Linux → macOS. Rates are receiver medians.',
+            *(['Phases with a target are uploads from the peer through this host to a '
+               'remote server; their rate is that path\'s, not the Thunderbolt link\'s.']
+              if forwarded else []), '',
             summarize(rows, args.baseline)]
     for env in sorted(out.glob('env-*.txt')):
         text += ['', f'### Environment ({env.stem[4:]})', '```', env.read_text().strip(), '```']
@@ -541,6 +589,23 @@ def main(argv=None):
                    'e.g. "pct exec 101 --" or "ip netns exec test"')
     p.add_argument('--output', default=default_out)
     p.set_defaults(func=cmd_run)
+
+    p = sub.add_parser('forward', help='uploads from the peer through this host to a '
+                       'remote iperf3 server, for path MTU checks')
+    p.add_argument('--phase', required=True, help='label, e.g. cap1280 or cap1500-learn')
+    p.add_argument('--client', required=True,
+                   help='command prefix that runs iperf3 on the peer, e.g. "ssh user@mac"')
+    p.add_argument('--target', required=True,
+                   help='iperf3 server address beyond this host (not the peer)')
+    p.add_argument('--peer', help='the peer address, for redaction only')
+    p.add_argument('--iface')
+    p.add_argument('--repeat', type=int, default=4, help='uploads')
+    p.add_argument('--time', type=int, default=10)
+    p.add_argument('--omit', type=int, default=1)
+    p.add_argument('--port', type=int, default=5201)
+    p.add_argument('--pause', type=float, default=2.0)
+    p.add_argument('--output', default=default_out)
+    p.set_defaults(func=cmd_run, forward=True)
 
     p = sub.add_parser('summary', help='print a redacted report to share')
     p.add_argument('--output', default=default_out)
