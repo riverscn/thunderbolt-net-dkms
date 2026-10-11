@@ -11,6 +11,7 @@
  */
 #include <linux/module.h>
 #include <linux/etherdevice.h>
+#include <linux/if_vlan.h>
 #include <linux/ip.h>
 #include <linux/ipv6.h>
 #include <linux/tcp.h>
@@ -38,11 +39,25 @@ module_param(bound_mss, ulong, 0444);
 module_param(bound_icmp, ulong, 0444);
 module_param(bound_hits, ulong, 0444);
 
+/* Ethernet header length including in-band VLAN tags. */
+static unsigned int link_hdr_len(const struct sk_buff *skb)
+{
+	unsigned int nhoff = ETH_HLEN;
+	__be16 proto = ((const struct ethhdr *)skb->data)->h_proto;
+
+	while (eth_type_vlan(proto) && nhoff < ETH_HLEN + 2 * VLAN_HLEN) {
+		proto = ((const struct vlan_hdr *)(skb->data + nhoff))->h_vlan_encapsulated_proto;
+		nhoff += VLAN_HLEN;
+	}
+	return nhoff;
+}
+
 static struct sk_buff *wire_copy(struct sk_buff *skb)
 {
 	struct sk_buff *copy;
 	struct tcphdr *th;
-	unsigned int off, len;
+	unsigned int nhoff = ETH_HLEN, off, len;
+	__be16 proto;
 
 	copy = alloc_skb(NET_IP_ALIGN + skb->len, GFP_ATOMIC);
 	if (!copy)
@@ -50,29 +65,39 @@ static struct sk_buff *wire_copy(struct sk_buff *skb)
 	skb_reserve(copy, NET_IP_ALIGN);
 	if (skb_copy_bits(skb, 0, skb_put(copy, skb->len), skb->len))
 		goto fail;
-	if (skb->protocol == htons(ETH_P_IP)) {
-		struct iphdr *ip = (void *)(copy->data + ETH_HLEN);
+	if (copy->len < ETH_HLEN)
+		goto fail;
+	proto = ((struct ethhdr *)copy->data)->h_proto;
+	/* In-band VLAN tags, as a device without VLAN offload emits them. */
+	while (eth_type_vlan(proto)) {
+		if (nhoff >= ETH_HLEN + 2 * VLAN_HLEN || copy->len < nhoff + VLAN_HLEN)
+			goto fail;
+		proto = ((struct vlan_hdr *)(copy->data + nhoff))->h_vlan_encapsulated_proto;
+		nhoff += VLAN_HLEN;
+	}
+	if (proto == htons(ETH_P_IP)) {
+		struct iphdr *ip = (void *)(copy->data + nhoff);
 
-		if (copy->len < ETH_HLEN + sizeof(*ip) || ip->ihl != 5 ||
+		if (copy->len < nhoff + sizeof(*ip) || ip->ihl != 5 ||
 		    ip->protocol != IPPROTO_TCP)
 			goto fail;
-		off = ETH_HLEN + sizeof(*ip);
+		off = nhoff + sizeof(*ip);
 		len = copy->len - off;
 		if (len < sizeof(*th))
 			goto fail;
-		ip->tot_len = htons(copy->len - ETH_HLEN);
+		ip->tot_len = htons(copy->len - nhoff);
 		ip_send_check(ip);
 		th = (void *)(copy->data + off);
 		th->check = 0;
 		th->check = csum_tcpudp_magic(ip->saddr, ip->daddr, len,
 					    IPPROTO_TCP, csum_partial(th, len, 0));
-	} else if (skb->protocol == htons(ETH_P_IPV6)) {
-		struct ipv6hdr *ip = (void *)(copy->data + ETH_HLEN);
+	} else if (proto == htons(ETH_P_IPV6)) {
+		struct ipv6hdr *ip = (void *)(copy->data + nhoff);
 
-		if (copy->len < ETH_HLEN + sizeof(*ip) ||
+		if (copy->len < nhoff + sizeof(*ip) ||
 		    ip->nexthdr != IPPROTO_TCP)
 			goto fail;
-		off = ETH_HLEN + sizeof(*ip);
+		off = nhoff + sizeof(*ip);
 		len = copy->len - off;
 		if (len < sizeof(*th))
 			goto fail;
@@ -132,7 +157,7 @@ static netdev_tx_t link_xmit(struct sk_buff *skb, struct net_device *dev)
 			if (skb_is_gso(skb)) {
 				rebuilt_gso++;
 			} else {
-				unsigned long iplen = skb->len - ETH_HLEN;
+				unsigned long iplen = skb->len - link_hdr_len(skb);
 
 				/* The fixture installs a 1280 route. These were GSO on
 				 * the sender, but RX normalization left them ordinary.
@@ -160,6 +185,8 @@ static void link_setup(struct net_device *dev)
 	dev->max_mtu = 9000;
 	dev->features |= NETIF_F_SG | NETIF_F_HW_CSUM | NETIF_F_TSO | NETIF_F_TSO6;
 	dev->hw_features = dev->features;
+	/* Let a VLAN device on top keep TSO, so tagged aggregates occur. */
+	dev->vlan_features = dev->features;
 	eth_hw_addr_random(dev);
 }
 

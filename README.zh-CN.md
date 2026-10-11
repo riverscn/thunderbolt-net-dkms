@@ -32,8 +32,14 @@ MTU、DHCP、路由和其他卸载功能仍需分别排查。
 最小 MTU。设为 1500 时，Mac 经宿主机、再经 PPPoE（MTU 1492）上行到公网的上传
 只有 0.1 Mbit/s；设为 1280 后达到上行链路 39 Mbit/s 的上限。测量过程和何时
 应该调高（例如全程 jumbo 的局域网）见[路径 MTU](docs/path-mtu.md)。你自己创建的
-`/etc/modprobe.d/thunderbolt-net.conf` 会保留原值，升级后请检查。除内置默认值外
-驱动代码没有变化。
+`/etc/modprobe.d/thunderbolt-net.conf` 会保留原值，升级后请检查。
+
+本版本还加入一个实验性机制，让这个上限不再那么关键：`rx_segment_learn=1`（默认）
+读取从宿主机发往 Mac 的 SYN-ACK 中的 MSS 选项和 ICMP Fragmentation Needed /
+Packet Too Big 报文，按流记录路径上界，于是即使上限设错，宿主机也能按真实路径
+切分聚合包。在 PPPoE 拓扑上，故意设成 1500 的上限配合学习仍然跑满了上行链路。
+没有记录的流沿用上限。详见[学习上界](docs/path-mtu.md#learned-bounds--experimental-2026-10-11)；
+`rx_segment_learn=0` 可关闭。
 
 ## 0.3.0 版本
 

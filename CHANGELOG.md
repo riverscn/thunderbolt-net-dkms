@@ -10,7 +10,14 @@
 - Document the cap's semantics, the measurement, common path limits and the
   symptom of a value that is too large. An existing
   `/etc/modprobe.d/thunderbolt-net.conf` keeps its own value.
-- Check the built-in default in the QEMU parameter test. No other driver change.
+- Check the built-in default in the QEMU parameter test.
+- Add experimental per-flow bounds (`rx_segment_learn`, default on): the
+  SYN/SYN-ACK MSS option and ICMP Fragmentation Needed / Packet Too Big that
+  leave toward the peer bound each flow and destination, so a normalized
+  aggregate is split at the learned limit instead of the cap, never above the
+  interface MTU. Flows without a record keep the cap. Counters
+  `rx_bound_learned_mss`, `rx_bound_learned_icmp`, `rx_bound_hits`. Add real
+  TCP sessions through a metadata-loss link to the QEMU suite.
 
 ## 0.3.0
 

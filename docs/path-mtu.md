@@ -154,11 +154,20 @@ four uploads reached 36.9, 6.2, 38.1 and 39.6 Mbit/s against the uplink's
 retransmissions and a tenth of the aggregates, the same uplink pause seen once
 in the cap-1280 phase. Rows `learn-cap1500` in [the CSV](path-mtu-results.csv).
 
-Limits: a connection established before the driver loaded has no SYN-ACK
-record and keeps the cap until an ICMP arrives; only ICMP that passes through
-this host is seen, which is every ICMP addressed to the peer for flows this
-host forwards; VLAN-tagged control packets are not parsed yet; the table holds
-2048 entries. This is a prototype on `experiment/rx-flow-bound`, not a release.
+A learned bound below the cap also lowers the size above which a packet is
+examined, so an aggregate between the bound and the cap is split as well;
+without that, such packets passed through unmarked and were rejected
+downstream (seen as 18 oversized packets in one IPv6 session on Linux 6.12
+before the fix). Plain SYNs toward the peer (a remote opening the connection)
+and up to two in-band VLAN tags are handled; a VLAN session is part of the
+suite.
+
+Limits: a connection established before the driver loaded has no SYN record
+and keeps the cap until an ICMP arrives; only ICMP that passes through this
+host is seen, which is every ICMP addressed to the peer for flows this host
+forwards; the table holds 2048 entries and one global lock, uncontended with a
+single receive queue. The bound table is experimental; `rx_segment_learn=0`
+restores the cap-only behavior.
 
 ## Not yet done
 
@@ -169,5 +178,5 @@ host forwards; VLAN-tagged control packets are not parsed yet; the table holds
   between the two from being treated as aggregates and would also cover
   aggregates between the cap and the interface MTU, which today pass through
   unmarked. This changes validated receive behavior and needs its own tests.
-- Learned bounds need review of the table's locking and memory under many
-  flows, VLAN handling, and a longer hardware run before any release.
+- Learned bounds have one short hardware run behind them; longer runs, many
+  concurrent flows and a second peer type remain to be observed.

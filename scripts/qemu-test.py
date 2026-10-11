@@ -169,7 +169,7 @@ def main():
         for name in ('thunderbolt_net', 'tbnet_rx_test', 'tbnet_path_test', 'tbnet_order_test', 'tbnet_tcp_test'):
             shutil.copy2(ROOT / 'src' / (name + '.ko'), fs / (name + '.ko'))
         dependencies = []
-        for name in ('thunderbolt', 'bridge', 'veth'):
+        for name in ('thunderbolt', 'bridge', 'veth', '8021q'):
             result = run(['modprobe', '-S', kernel, '--show-depends', name], capture_output=True, text=True)
             for line in result.stdout.splitlines():
                 if not line.startswith('insmod '):
@@ -239,16 +239,19 @@ done
         # limit instead, so no ICMP is needed. Results go to the kernel log.
         init += r'''$B rmmod tbnet_path_test
 for ipv in 4 6; do
- for policy in preserve capped oversized learned learned_mss; do
+ for policy in preserve capped oversized learned learned_mss learned_vlan; do
   mode=1
   cap=1280
   learn=0
   advmss=
+  rx=tbrx0
+  peer=tbpeer0
   case "$policy" in
    preserve) mode=0 ;;
    oversized) cap=1500 ;;
    learned) cap=1500; learn=1 ;;
    learned_mss) cap=1500; learn=1; advmss=1240; test "$ipv" != 6 || advmss=1220 ;;
+   learned_vlan) cap=1500; learn=1; rx=tbrx0.7; peer=tbpeer0.7 ;;
   esac
   $B insmod /tbnet_tcp_test.ko mode="$mode" cap="$cap" learn="$learn"
   $IP netns add sender
@@ -262,21 +265,29 @@ for ipv in 4 6; do
   $IP -n sender link set tbpeer0 mtu 9000 up
   $IP -n receiver link set lo up
   $IP -n receiver link set in0 mtu 9000 up
-  $IP addr add 192.0.2.1/24 dev tbrx0
+  if test "$rx" != tbrx0; then
+   # In-band 802.1Q tags on both the data and the control packets.
+   $IP link add link tbrx0 name "$rx" type vlan id 7
+   $IP link set "$rx" mtu 9000 up
+   $IP -n sender link add link tbpeer0 name "$peer" type vlan id 7
+   $IP -n sender link set "$peer" mtu 9000 up
+  fi
+  $IP addr add 192.0.2.1/24 dev "$rx"
   $IP addr add 198.51.100.1/24 dev out0
-  $IP -n sender addr add 192.0.2.10/24 dev tbpeer0
+  $IP -n sender addr add 192.0.2.10/24 dev "$peer"
   $IP -n receiver addr add 198.51.100.20/24 dev in0
   $IP -n sender route add default via 192.0.2.1
   $IP -n receiver route add default via 198.51.100.1 ${advmss:+advmss $advmss}
   $IP route add 198.51.100.20/32 dev out0 mtu 1280
-  $IP -6 addr add 2001:db8:1::1/64 dev tbrx0 nodad
+  $IP -6 addr add 2001:db8:1::1/64 dev "$rx" nodad
   $IP -6 addr add 2001:db8:2::1/64 dev out0 nodad
-  $IP -n sender -6 addr add 2001:db8:1::10/64 dev tbpeer0 nodad
+  $IP -n sender -6 addr add 2001:db8:1::10/64 dev "$peer" nodad
   $IP -n receiver -6 addr add 2001:db8:2::20/64 dev in0 nodad
   $IP -n sender -6 route add default via 2001:db8:1::1
   $IP -n receiver -6 route add default via 2001:db8:2::1 ${advmss:+advmss $advmss}
   $IP -6 route add 2001:db8:2::20/128 dev out0 mtu 1280
   echo 0 > /proc/sys/net/ipv4/conf/tbrx0/rp_filter
+  test "$rx" = tbrx0 || echo 0 > "/proc/sys/net/ipv4/conf/$rx/rp_filter"
   dest=198.51.100.20
   test "$ipv" != 6 || dest=2001:db8:2::20
   $IP netns exec receiver /tcp-session server "$dest" &
@@ -294,6 +305,7 @@ for ipv in 4 6; do
   $IP netns del sender
   $IP netns del receiver
   $IP link del out0 2>/dev/null || true
+  test "$rx" = tbrx0 || $IP link del "$rx"
   $B rmmod tbnet_tcp_test
  done
 done
@@ -346,9 +358,9 @@ def tcp_sessions(text):
             # A cap above the path limit is the stall under study; its
             # outcome depends on kernel TCP recovery and is only recorded.
             assert row['bound_hits'] == 0, row
-        elif row['policy'] == 'learned':
+        elif row['policy'] in ('learned', 'learned_vlan'):
             # The same oversized cap, corrected by the ICMP feedback that
-            # passes through the host toward the sender.
+            # passes through the host toward the sender; also through a VLAN.
             assert row['success'] == 1, row
             assert row['bound_icmp'] > 0 and row['bound_hits'] > 0, row
             assert row['plain_over_path'] == 0, row
@@ -358,7 +370,7 @@ def tcp_sessions(text):
             assert row['bound_mss'] > 0 and row['bound_icmp'] == 0, row
             assert row['bound_hits'] > 0 and row['plain_over_path'] == 0, row
         sessions.append(row)
-    assert len(sessions) == 8, text[-8000:]
+    assert len(sessions) == 10, text[-8000:]
     return sessions
 
 if __name__ == '__main__':

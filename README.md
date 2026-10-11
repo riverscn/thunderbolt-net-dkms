@@ -41,8 +41,16 @@ Internet over a PPPoE uplink (MTU 1492) ran at 0.1 Mbit/s; with 1280 they
 reached the uplink's 39 Mbit/s ceiling. See [path MTU](docs/path-mtu.md) for
 the measurement and for when to raise the value again (for example on a
 jumbo LAN). An `/etc/modprobe.d/thunderbolt-net.conf` you created keeps its own
-value; review it after upgrading. The driver itself is unchanged apart from
-the built-in default.
+value; review it after upgrading.
+
+It also adds an experimental mechanism that makes the cap matter less:
+`rx_segment_learn=1` (default) reads the SYN-ACK MSS and ICMP Fragmentation
+Needed / Packet Too Big messages that leave the host toward the Mac and bounds
+each flow by them, so the host splits aggregates at the real path limit even
+when the cap is wrong. On the PPPoE topology a deliberately wrong cap of 1500
+still reached the uplink ceiling with learning on. Flows with no record keep
+the cap. See [learned bounds](docs/path-mtu.md#learned-bounds--experimental-2026-10-11);
+`rx_segment_learn=0` disables it.
 
 ## Version 0.3.0
 

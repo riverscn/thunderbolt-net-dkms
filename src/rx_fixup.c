@@ -55,6 +55,11 @@ static DEFINE_SPINLOCK(tbnet_bound_lock);
 static DEFINE_HASHTABLE(tbnet_bound_table, TBNET_BOUND_BITS);
 static unsigned int tbnet_bound_count;
 static LIST_HEAD(tbnet_bound_devs);
+/* Smallest bound stored since the table was last empty: a packet no larger
+ * than this cannot need a learned split, so the receive path skips the lookup.
+ * Only a hint; a value below the true minimum costs parsing, not correctness.
+ */
+static unsigned int tbnet_bound_floor;
 
 static struct tbnet_bound_dev *tbnet_bound_dev_find(const struct net_device *dev)
 {
@@ -97,6 +102,8 @@ void tbnet_bound_unregister(struct net_device *dev)
 	bd = tbnet_bound_dev_find(dev);
 	if (bd)
 		list_del(&bd->node);
+	if (!tbnet_bound_count)
+		WRITE_ONCE(tbnet_bound_floor, 0);
 	spin_unlock_bh(&tbnet_bound_lock);
 	kfree(bd);
 }
@@ -198,6 +205,8 @@ static void tbnet_bound_store(const struct tbnet_bound_key *key,
 		hash_add(tbnet_bound_table, &entry->node, hash);
 		tbnet_bound_count++;
 	}
+	if (!tbnet_bound_floor || bound < tbnet_bound_floor)
+		WRITE_ONCE(tbnet_bound_floor, bound);
 	entry->bound = bound;
 	entry->stamp = jiffies;
 	if (icmp)
@@ -304,8 +313,11 @@ static void tbnet_bound_observe_synack(struct net_device *dev,
 	const struct tcphdr *th;
 	unsigned int mss;
 
+	/* A plain SYN toward the peer (a remote opening the connection) carries
+	 * the remote's MSS just the same.
+	 */
 	th = skb_header_pointer(skb, thoff, sizeof(_th), &_th);
-	if (!th || !th->syn || !th->ack)
+	if (!th || !th->syn || th->rst)
 		return;
 	mss = tbnet_tcp_mss_option(skb, thoff, th->doff * 4);
 	if (!mss)
@@ -339,13 +351,28 @@ void tbnet_bound_observe_tx(struct net_device *dev, struct sk_buff *skb)
 	unsigned int nhoff = ETH_HLEN;
 	struct ethhdr _eth;
 	const struct ethhdr *eth;
+	__be16 proto;
 
 	if (skb_is_gso(skb) || list_empty(&tbnet_bound_devs))
 		return;
 	eth = skb_header_pointer(skb, 0, sizeof(_eth), &_eth);
 	if (!eth)
 		return;
-	if (eth->h_proto == htons(ETH_P_IP)) {
+	proto = eth->h_proto;
+	/* The device offers no VLAN offload, so tags are in-band, as on receive. */
+	while (eth_type_vlan(proto)) {
+		struct vlan_hdr _vh;
+		const struct vlan_hdr *vh;
+
+		if (nhoff >= ETH_HLEN + 2 * VLAN_HLEN)
+			return;
+		vh = skb_header_pointer(skb, nhoff, sizeof(_vh), &_vh);
+		if (!vh)
+			return;
+		proto = vh->h_vlan_encapsulated_proto;
+		nhoff += VLAN_HLEN;
+	}
+	if (proto == htons(ETH_P_IP)) {
 		struct iphdr _iph;
 		const struct iphdr *iph;
 		unsigned int iphlen;
@@ -378,7 +405,7 @@ void tbnet_bound_observe_tx(struct net_device *dev, struct sk_buff *skb)
 						 &m->inner.daddr, ports,
 						 ntohs(m->icmp.un.frag.mtu));
 		}
-	} else if (eth->h_proto == htons(ETH_P_IPV6)) {
+	} else if (proto == htons(ETH_P_IPV6)) {
 		struct ipv6hdr _ip6h;
 		const struct ipv6hdr *ip6h;
 
@@ -444,7 +471,7 @@ static bool tbnet_tcp_options_supported(const struct tcphdr *th)
 
 struct sk_buff *tbnet_rx_fixup(struct sk_buff *skb, unsigned int mtu)
 {
-	unsigned int nhoff = ETH_HLEN, iphlen, iplen, tcplen, thlen, mss;
+	unsigned int nhoff = ETH_HLEN, iphlen, iplen, tcplen, thlen, mss, threshold;
 	struct tcphdr *th;
 	unsigned int gso_type;
 	__be16 proto;
@@ -470,7 +497,17 @@ struct sk_buff *tbnet_rx_fixup(struct sk_buff *skb, unsigned int mtu)
 		proto = vh->h_vlan_encapsulated_proto;
 		nhoff += VLAN_HLEN;
 	}
-	if (skb->len - nhoff <= mtu)
+	/* Packets within the cap may still exceed a learned bound; parse them
+	 * only when some bound below the cap exists.
+	 */
+	threshold = mtu;
+	if (skb->dev) {
+		unsigned int floor = READ_ONCE(tbnet_bound_floor);
+
+		if (floor && floor < threshold)
+			threshold = floor;
+	}
+	if (skb->len - nhoff <= threshold)
 		return skb;
 
 	if (proto == htons(ETH_P_IP)) {
@@ -508,7 +545,7 @@ struct sk_buff *tbnet_rx_fixup(struct sk_buff *skb, unsigned int mtu)
 	}
 	if (iplen < iphlen + sizeof(*th) || iplen > skb->len - nhoff)
 		goto drop;
-	if (iplen <= mtu)
+	if (iplen <= threshold)
 		return skb;
 	if (!pskb_may_pull(skb, nhoff + iphlen + sizeof(*th)))
 		goto drop;
@@ -544,12 +581,11 @@ struct sk_buff *tbnet_rx_fixup(struct sk_buff *skb, unsigned int mtu)
 						   &((const struct ipv6hdr *)ipp)->saddr,
 						   &((const struct ipv6hdr *)ipp)->daddr,
 						   th->source, th->dest);
-		if (bound) {
+		if (bound)
 			mtu = min(bound, READ_ONCE(skb->dev->mtu));
-			if (iplen <= mtu || mtu <= iphlen + thlen)
-				return skb;
-		}
 	}
+	if (iplen <= mtu || mtu <= iphlen + thlen)
+		return skb;
 	mss = mtu - iphlen - thlen;
 	if (tcplen - thlen <= mss)
 		return skb;

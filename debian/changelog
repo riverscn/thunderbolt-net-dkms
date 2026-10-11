@@ -4,6 +4,8 @@ thunderbolt-net (0.3.1-1) unstable; urgency=medium
   * The cap must not exceed the smallest path MTU beyond the host; 1500
     stalled macOS uploads behind a PPPoE uplink.
   * Document the cap's semantics and measurement in docs/path-mtu.md.
+  * Learn per-flow segment bounds from forwarded SYN-ACK MSS and ICMP
+    (rx_segment_learn, experimental, default on).
 
  -- Shun Li <riverscn@gmail.com>  Sun, 11 Oct 2026 01:52:06 +0000
 
