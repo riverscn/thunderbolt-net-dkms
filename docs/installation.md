@@ -68,7 +68,7 @@ In a **new, empty directory**, download the newest release's package and
 checksum file, verify, and install:
 
 ```sh
-curl -fsSL "https://api.github.com/repos/riverscn/thunderbolt-net-dkms/releases?per_page=1" \
+curl -fsSL https://api.github.com/repos/riverscn/thunderbolt-net-dkms/releases/latest \
   | grep -oE '"browser_download_url": *"[^"]*(_all\.deb|/SHA256SUMS)"' | cut -d'"' -f4 \
   | xargs -n1 curl -fLO
 sha256sum --check --ignore-missing SHA256SUMS && sudo apt install ./thunderbolt-net-dkms_*_all.deb
@@ -77,11 +77,10 @@ modinfo -n thunderbolt_net
 modinfo -F version thunderbolt_net
 ```
 
-The API query returns the most recent release including prereleases; all
-releases so far are prereleases, so GitHub's `releases/latest` redirect does
-not resolve for this project. The checksum line must report `OK`; `apt` then
-installs the single `.deb` in the directory. To install a specific version,
-download its `.deb` and `SHA256SUMS` from the
+The API query returns the latest full release; prereleases are skipped. The
+checksum line must report `OK`; `apt` then installs the single `.deb` in the
+directory. To install a prerelease or a specific version, download its `.deb`
+and `SHA256SUMS` from the
 [Releases](https://github.com/riverscn/thunderbolt-net-dkms/releases) page
 into an empty directory and run the same two commands. The unauthenticated
 GitHub API allows 60 requests per hour per address.
