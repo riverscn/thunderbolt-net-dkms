@@ -47,12 +47,15 @@ def main():
     out = pathlib.Path(args.output)
     out.mkdir(parents=True, exist_ok=True)
     (out / 'PKGBUILD').write_text(render(version, sha256))
-    if shutil.which('makepkg'):
-        srcinfo = subprocess.run(['makepkg', '--printsrcinfo'], cwd=out, check=True,
-                                 capture_output=True, text=True).stdout
-        (out / '.SRCINFO').write_text(srcinfo)
+    # makepkg refuses to run as root; the AUR upload is done as a user anyway.
+    result = (subprocess.run(['makepkg', '--printsrcinfo'], cwd=out, capture_output=True, text=True)
+              if shutil.which('makepkg') else None)
+    if result and result.returncode == 0:
+        (out / '.SRCINFO').write_text(result.stdout)
     else:
-        print('makepkg not found; .SRCINFO not written', file=sys.stderr)
+        why = result.stderr.strip() if result else 'makepkg not found'
+        print(f'.SRCINFO not written ({why}); run `makepkg --printsrcinfo` in {out} as a user',
+              file=sys.stderr)
     print(out / 'PKGBUILD')
 
 

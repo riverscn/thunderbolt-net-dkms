@@ -42,7 +42,8 @@ cp "dist/thunderbolt-net-dkms-$version.tar.gz" build/aur/
 grep -q "^pkgver=$version\$" build/aur/PKGBUILD
 id builder >/dev/null 2>&1 || useradd -m builder
 chown -R builder build/aur
-su builder -c "cd build/aur && makepkg --noconfirm"
+su builder -c "cd build/aur && makepkg --printsrcinfo > .SRCINFO && makepkg --noconfirm"
+grep -q "pkgver = $version" build/aur/.SRCINFO
 original=$(modinfo -k "$kernel" -F filename thunderbolt_net)
 original_hash=$(sha256sum "$original" | cut -d ' ' -f 1)
 pacman -U --noconfirm build/aur/thunderbolt-net-dkms-"$version"-1-x86_64.pkg.tar.zst
