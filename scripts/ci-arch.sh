@@ -32,21 +32,33 @@ install -D -m 644 "/usr/lib/modules/$kernel/vmlinuz" "/boot/vmlinuz-$kernel"
 make check
 python3 scripts/qemu-test.py --kernel "$kernel"
 
-# Actual DKMS build/install/remove with Arch's dkms against the same kernel.
+# Build the Arch package from the local source archive (the release URL is
+# never fetched: makepkg uses the file placed next to the PKGBUILD), install it
+# with pacman, and let Arch's dkms build it for the pinned kernel.
 version=$(cat VERSION)
-source_dir="/usr/src/thunderbolt-net-$version"
-mkdir -p "$source_dir/src"
-cp VERSION Makefile dkms.conf "$source_dir/"
-cp src/Makefile src/*.c src/*.h "$source_dir/src/"
+python3 scripts/make-dist.py
+python3 scripts/make-aur.py --output build/aur
+cp "dist/thunderbolt-net-dkms-$version.tar.gz" build/aur/
+grep -q "^pkgver=$version\$" build/aur/PKGBUILD
+id builder >/dev/null 2>&1 || useradd -m builder
+chown -R builder build/aur
+su builder -c "cd build/aur && makepkg --printsrcinfo > .SRCINFO && makepkg --noconfirm"
+grep -q "pkgver = $version" build/aur/.SRCINFO
 original=$(modinfo -k "$kernel" -F filename thunderbolt_net)
 original_hash=$(sha256sum "$original" | cut -d ' ' -f 1)
-dkms add -m thunderbolt-net -v "$version"
-dkms install -m thunderbolt-net -v "$version" -k "$kernel"
+pacman -U --noconfirm build/aur/thunderbolt-net-dkms-"$version"-1-x86_64.pkg.tar.zst
+test -f /usr/lib/modprobe.d/thunderbolt-net.conf
+test -f "/usr/src/thunderbolt-net-$version/dkms.conf"
+# The pacman hook builds for installed kernels; make the pinned one explicit.
+dkms status -m thunderbolt-net -k "$kernel" | grep -q installed || \
+    dkms install -m thunderbolt-net -v "$version" -k "$kernel"
 selected=$(modinfo -k "$kernel" -F filename thunderbolt_net)
 case "$selected" in */updates/dkms/*) ;; *) echo "DKMS module was not selected: $selected" >&2; exit 1 ;; esac
 test "$(modinfo -k "$kernel" -F version thunderbolt_net)" = "$version"
 bash scripts/check-throttling.sh "$kernel" "$selected" --require
-dkms remove -m thunderbolt-net -v "$version" --all
+pacman -R --noconfirm thunderbolt-net-dkms
+test ! -e /usr/lib/modprobe.d/thunderbolt-net.conf
+test ! -e "/usr/src/thunderbolt-net-$version"
 test "$(modinfo -k "$kernel" -F filename thunderbolt_net)" = "$original"
 test "$(sha256sum "$original" | cut -d ' ' -f 1)" = "$original_hash"
-echo "Validated Arch kernel and DKMS restoration: $kernel"
+echo "Validated Arch kernel, package install/remove and DKMS restoration: $kernel"

@@ -54,6 +54,24 @@ class ReleaseTests(unittest.TestCase):
         self.assertNotIn('.conf.example', text)
         self.assertNotIn('riverscn/thunderbolt-net-dkms', text)
 
+    def test_arch_pkgbuild_tracks_version_and_fills_release_hash(self):
+        version = (ROOT / 'VERSION').read_text().strip()
+        pkgbuild = (ROOT / 'packaging/arch/PKGBUILD').read_text()
+        self.assertIn(f'pkgver={version}\n', pkgbuild)
+        self.assertIn("sha256sums=('SKIP')", pkgbuild)
+        spec = importlib.util.spec_from_file_location('aur', ROOT / 'scripts/make-aur.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        with tempfile.TemporaryDirectory() as tmp:
+            sums = pathlib.Path(tmp) / 'SHA256SUMS'
+            sums.write_text('0' * 64 + f'  thunderbolt-net-dkms-{version}.tar.gz\n'
+                            '1' * 64 + f'  thunderbolt-net-dkms_{version}-1_all.deb\n')
+            rendered = module.render(version, module.archive_hash(sums, version))
+        self.assertIn("sha256sums=('" + '0' * 64 + "')", rendered)
+        self.assertIn(f'pkgver={version}', rendered)
+        for name in ('src/compat.h', 'src/rx_fixup.c', 'packaging/thunderbolt-net.conf', 'dkms.conf'):
+            self.assertIn(name.split('/')[-1], pkgbuild)
+
     def test_reload_instructions_keep_the_thunderbolt_core(self):
         # modprobe -r also unloads the unused core module and drops the link.
         spec = importlib.util.spec_from_file_location('notes', ROOT / 'scripts/release-notes.py')

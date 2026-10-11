@@ -15,8 +15,9 @@ and [compatibility](compatibility.md).
   [upstream validation](upstream-validation.md). Still open: physical disconnect
   during traffic, suspend/resume, long stress, Linux 7.2 bridge forwarding and
   more controllers. Watch the higher retransmission counts seen in one phase.
-- Assess Arch packaging (PKGBUILD/AUR). The pinned Arch kernel is tested in CI;
-  `linux-lts` and other distribution kernels are not.
+- Publish the Arch package to the AUR (`packaging/arch/`, built and installed
+  in CI against the pinned kernel). `linux-lts` and other kernel variants are
+  not tested.
 - The macOS-to-Linux upload ceiling (about 24.5 Gbit/s against 28–30 Gbit/s
   download) is not set by the Linux side; see the
   [upload ceiling investigation](upstream-validation.md#upload-ceiling-mac-to-linux).

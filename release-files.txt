@@ -38,6 +38,8 @@ docs/upstream-iperf3-results.csv
 docs/upstream-tracking.md
 docs/upstream-validation.md
 docs/validation.md
+packaging/arch/PKGBUILD
+packaging/arch/README.md
 packaging/thunderbolt-net.conf
 release-files.txt
 scripts/audit-deb.py
@@ -47,6 +49,7 @@ scripts/ci-arch.sh
 scripts/ci-linux.sh
 scripts/ci-upstream.sh
 scripts/hw-test.py
+scripts/make-aur.py
 scripts/make-dist.py
 scripts/privacy.py
 scripts/qemu-test.py
