@@ -2,9 +2,16 @@
 
 [English](README.md)
 
-这是 Linux `thunderbolt_net` 的实验性 DKMS 驱动包。它针对对端发来的超大
-TCP 包，先验证数据与校验和，再补充保守的 GSO 分段信息；本机仍接收聚合大包，
-转发时由 Linux 出口按需分段。
+这是打包为 DKMS 的树外 Linux `thunderbolt_net` 驱动。它跟踪上游驱动（Linux
+7.2.9，上游提交保留作者），并带有一个**接收侧 workaround**，用于处理对端发来的、
+不带分段边界的 TCP 聚合包（macOS Thunderbolt Bridge 开启 TSO 时就是这样）：驱动
+验证聚合包、按该流学习到的路径 MTU 附加保守的 GSO 分段信息，并保持聚合包完整，
+本机接收依旧快，转发时只在路径需要处分段。
+
+它的性质就是 workaround：ThunderboltIP 传输层不携带分段大小，驱动只能在从经过
+本机的 SYN-ACK 和 ICMP 学到的限制内，重建对端没有发来的信息。驱动基线、GRO 头
+长度修正、RX 生命周期修复和页面回收是常规的驱动工作；学习路径 MTU 是 0.4.0 新增
+的实验性功能。
 
 ## 它解决什么问题？
 

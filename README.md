@@ -2,10 +2,19 @@
 
 [简体中文](README.zh-CN.md)
 
-An **experimental**, out-of-tree Linux `thunderbolt_net` driver packaged for DKMS.
-It adds a receive workaround for oversized TCP packets from a peer:
-validate the packet, attach conservative GSO metadata, and retain the aggregate
-so local delivery stays fast and forwarding can segment when required.
+An out-of-tree Linux `thunderbolt_net` driver packaged for DKMS. It tracks the
+upstream driver (Linux 7.2.9, imports keep their authorship) and carries a
+**receive-side workaround** for peers that send TCP aggregates without segment
+boundaries, as the macOS Thunderbolt Bridge does with TSO enabled: the driver
+validates the aggregate, attaches conservative GSO metadata bounded by the
+flow's learned path MTU, and keeps the aggregate intact, so local delivery
+stays fast and forwarding segments only where the path requires it.
+
+It is a workaround by nature: the ThunderboltIP transport carries no segment
+size, so the driver reconstructs what the peer did not send, within limits it
+learns from the SYN-ACK and ICMP that pass through the host. The driver base,
+the GRO header correction, the RX lifecycle fixes and page recycling are
+ordinary driver work; the learned bounds are new in 0.4.0 and experimental.
 
 ## What problem does this address?
 
